@@ -9,10 +9,12 @@
 
 #include "core/libcamera_app.hpp"
 #include "core/options.hpp"
-
+#define IMAGE_WIDTH 1920
 using namespace std::placeholders;
 
+int renderDownData(CompletedRequestPtr *completed_request, float slope);
 // The main event loop for the application.
+LibcameraApp app;
 
 static void event_loop(LibcameraApp &app)
 {
@@ -45,15 +47,44 @@ static void event_loop(LibcameraApp &app)
 			return;
 
 		CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
+		renderDownData(&completed_request, 0);
+
 		app.ShowPreview(completed_request, app.ViewfinderStream());
 	}
+}
+
+
+int renderDownData(CompletedRequestPtr *completed_request, float slope=0){
+/*	libcamera::Stream *stream = app.GetMainStream();
+	StreamInfo info = app.GetStreamInfo(stream);
+	libcamera::Span<uint8_t> buffer = app.Mmap(completed_request->buffers[stream])[0];
+	uint32_t *ptr = (uint32_t *)buffer.data();
+	float output[IMAGE_WIDTH];
+	const float yFac = 1.0;
+	const float uFac = 1.0;
+	const float vFac = 1.0;
+
+	for(uint16_t x =0; x<info.width; x++){
+		output[x]=0;
+		for(uint16_t y=0; y<info.height;y++){
+			int16_t x2 = x + slope*y;
+			if(x2>=0 && x2<(uint16_t)info.width){
+				uint32_t total = info.width * info.height;
+				uint16_t y = ptr[y * info.width + x2];
+				uint16_t u = ptr[( y / 2) * (info.width / 2) + (x / 2) + total];
+				uint16_t v = ptr[( y / 2) * (info.width / 2) + (x / 2) + total + (total / 4)];
+				output[x] += y*yFac + u*uFac + v*vFac;
+			}
+		}
+		std::cout << "red x=" << x << " = " << output[x];
+	}
+*/	return 1;
 }
 
 int main(int argc, char *argv[])
 {
 	try
 	{
-		LibcameraApp app;
 		Options *options = app.GetOptions();
 		if (options->Parse(argc, argv))
 		{

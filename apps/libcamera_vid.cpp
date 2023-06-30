@@ -14,6 +14,42 @@
 #include "core/libcamera_encoder.hpp"
 #include "output/output.hpp"
 
+#include <math.h>
+#include <epoxy/egl.h>
+#include <epoxy/gl.h>
+
+#include <err.h>
+#include <X11/Xlib.h>
+
+
+#define IMAGE_WIDTH 1920
+// settings
+const unsigned int SCR_WIDTH = 1920;
+const unsigned int SCR_HEIGHT = 1080;
+
+EGLDisplay get_egl_display_or_skip(void);
+
+EGLDisplay get_egl_display_or_skip(void)
+{
+    Display *dpy = XOpenDisplay(NULL);
+    EGLint major, minor;
+    EGLDisplay edpy;
+    bool ok;
+
+    if (!dpy)
+        errx(77, "couldn't open display\n");
+
+    edpy = eglGetDisplay(dpy);
+    if (!edpy)
+        errx(1, "Couldn't get EGL display for X11 Display.\n");
+
+    ok = eglInitialize(edpy, &major, &minor);
+    if (!ok)
+        errx(1, "eglInitialize() failed\n");
+
+    return edpy;
+}
+
 using namespace std::placeholders;
 
 // Some keypress/signal handling.
@@ -59,6 +95,8 @@ static int get_colourspace_flags(std::string const &codec)
 	else
 		return LibcameraEncoder::FLAG_VIDEO_NONE;
 }
+
+
 
 // The main even loop for the application.
 
@@ -114,6 +152,41 @@ static void event_loop(LibcameraEncoder &app)
 		}
 
 		CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
+
+      		libcamera::Stream *stream = app.GetMainStream();
+        	StreamInfo info = app.GetStreamInfo(stream);
+        	libcamera::Span<uint8_t> buffer = app.Mmap(completed_request->buffers[stream])[0];
+        	uint8_t *ptr = (uint8_t *)buffer.data();
+	        float outputy[IMAGE_WIDTH];
+	        float outputu[IMAGE_WIDTH];
+	        float outputv[IMAGE_WIDTH];
+       //// 	const float yFac = 1.0;
+        ///	const float uFac = 0;
+        //	const float vFac = 0;
+		float slope = 0;
+	//	uint16_t cy,cu,cv;
+                uint32_t total = info.width * info.height;
+//		std::cout << "set buffer\n";
+        	for(uint16_t x =0; x<info.width; x++){
+//			std::cout << "x="<<x<<"\n";
+                	outputy[x]=0;
+                	outputu[x]=0;
+                	outputv[x]=0;
+                	for(uint16_t y=0; y<info.height;y++){
+                        	int16_t x2 = x + slope*y;
+//				std::cout << "y="<<y<<" x2="<<x2<<"\n";
+                        	if(x2>=0 && x2<(uint16_t)info.width){
+                                	outputy[x] = ptr[y * info.width + x2];
+                                	outputu[x] = ptr[( y / 2) * (info.width / 2) + (x / 2) + total];
+                                	outputv[x] = ptr[( y / 2) * (info.width / 2) + (x / 2) + total + (total / 4)];
+                              //  	output[x] += cy*yFac + cu*uFac + cv*vFac;
+                        	}
+                	}
+        	}
+		int x = 0;
+                std::cout << "red x=" << x << " = " << outputy[x]/info.width << ","<< outputu[x]/info.width<<","<<outputv[x]/info.width<<"\n";
+
+
 		app.EncodeBuffer(completed_request, app.VideoStream());
 		app.ShowPreview(completed_request, app.VideoStream());
 	}
@@ -121,6 +194,11 @@ static void event_loop(LibcameraEncoder &app)
 
 int main(int argc, char *argv[])
 {
+
+
+
+
+
 	try
 	{
 		LibcameraEncoder app;

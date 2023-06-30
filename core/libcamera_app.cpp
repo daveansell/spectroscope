@@ -838,7 +838,7 @@ void LibcameraApp::setupCapture()
 	for (StreamConfiguration &config : *configuration_)
 	{
 		Stream *stream = config.stream();
-
+		std::cout << "stream=" << stream;
 		if (allocator_->allocate(stream) < 0)
 			throw std::runtime_error("failed to allocate capture buffers");
 
@@ -911,7 +911,7 @@ void LibcameraApp::requestComplete(Request *request)
 
 		return;
 	}
-
+	std::cout << "Request Complete";
 	CompletedRequest *r = new CompletedRequest(sequence_++, request);
 	CompletedRequestPtr payload(r, [this](CompletedRequest *cr) { this->queueRequest(cr); });
 	{

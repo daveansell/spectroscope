@@ -16,6 +16,7 @@ Preview *make_qt_preview(Options const *options);
 
 Preview *make_preview(Options const *options)
 {
+	std::cout << "make_preview()\n";
 	if (options->nopreview)
 		return make_null_preview(options);
 #if QT_PRESENT

@@ -382,7 +382,7 @@ void DrmPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		h = width_ * info.height / info.width, y_off = (height_ - h) / 2;
 	else
 		w = height_ * info.width / info.height, x_off = (width_ - w) / 2;
-
+	std::cout <<"Show()\n";
 	if (drmModeSetPlane(drmfd_, planeId_, crtcId_, buffer.fb_handle, 0, x_off + x_, y_off + y_, w, h, 0, 0,
 						buffer.info.width << 16, buffer.info.height << 16))
 		throw std::runtime_error("drmModeSetPlane failed: " + std::string(ERRSTR));

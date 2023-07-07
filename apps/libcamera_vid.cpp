@@ -21,11 +21,17 @@
 #include <err.h>
 #include <X11/Xlib.h>
 
+#include "../preview/preview.hpp"
 
 #define IMAGE_WIDTH 1920
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
+//static GLint compile_shader(GLenum target, const char *source);
+//static GLint link_program(GLint vs, GLint fs);
+static void gl_setup(int width, int height, int window_width, int window_height);
+GLint prog ;
+/*EGLDisplay eglDisp;
 
 EGLDisplay get_egl_display_or_skip(void);
 
@@ -49,7 +55,7 @@ EGLDisplay get_egl_display_or_skip(void)
 
     return edpy;
 }
-
+*/
 using namespace std::placeholders;
 
 // Some keypress/signal handling.
@@ -153,7 +159,7 @@ static void event_loop(LibcameraEncoder &app)
 
 		CompletedRequestPtr &completed_request = std::get<CompletedRequestPtr>(msg.payload);
 
-      		libcamera::Stream *stream = app.GetMainStream();
+      /*		libcamera::Stream *stream = app.GetMainStream();
         	StreamInfo info = app.GetStreamInfo(stream);
         	libcamera::Span<uint8_t> buffer = app.Mmap(completed_request->buffers[stream])[0];
         	uint8_t *ptr = (uint8_t *)buffer.data();
@@ -186,11 +192,111 @@ static void event_loop(LibcameraEncoder &app)
 		int x = 0;
                 std::cout << "red x=" << x << " = " << outputy[x]/info.width << ","<< outputu[x]/info.width<<","<<outputv[x]/info.width<<"\n";
 
+*/
 
 		app.EncodeBuffer(completed_request, app.VideoStream());
 		app.ShowPreview(completed_request, app.VideoStream());
+		if(!prog){
+			gl_setup(1920,1080,1920,1080);
+		}
 	}
 }
+/*
+static GLint compile_shader(GLenum target, const char *source)
+{
+        GLuint s = glCreateShader(target);
+        glShaderSource(s, 1, (const GLchar **)&source, NULL);
+        glCompileShader(s);
+
+        GLint ok;
+        glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+
+        if (!ok)
+        {
+                GLchar *info;
+                GLint size;
+
+                glGetShaderiv(s, GL_INFO_LOG_LENGTH, &size);
+                info = (GLchar *)malloc(size);
+
+                glGetShaderInfoLog(s, size, NULL, info);
+                throw std::runtime_error("failed to compile shader: " + std::string(info) + "\nsource:\n" +
+                                                                 std::string(source));
+        }
+
+        return s;
+}
+static GLint link_program(GLint vs, GLint fs)
+{
+        GLint prog = glCreateProgram();
+        glAttachShader(prog, vs);
+        glAttachShader(prog, fs);
+        glLinkProgram(prog);
+
+        GLint ok;
+        glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+        if (!ok)
+        {
+                // Some drivers return a size of 1 for an empty log.  This is the size
+                 // of a log that contains only a terminating NUL character.
+                 //
+                GLint size;
+                GLchar *info = NULL;
+                glGetProgramiv(prog, GL_INFO_LOG_LENGTH, &size);
+                if (size > 1)
+                {
+                        info = (GLchar *)malloc(size);
+                        glGetProgramInfoLog(prog, size, NULL, info);
+                }
+
+                throw std::runtime_error("failed to link: " + std::string(info ? info : "<empty log>"));
+        }
+
+        return prog;
+}
+*/
+static void gl_setup(int width, int height, int window_width, int window_height)
+{
+/*        float w_factor = width / (float)window_width;
+        float h_factor = (height-100) / (float)window_height;
+        float max_dimension = std::max(w_factor, h_factor);
+        w_factor /= max_dimension;
+        h_factor /= max_dimension;
+        char vs[256];
+        snprintf(vs, sizeof(vs),
+                         "attribute vec4 pos;\n"
+                         "varying vec2 texcoord;\n"
+                         "\n"
+                         "void main() {\n"
+                         "  gl_Position = pos;\n"
+                         "  texcoord.x = pos.x / %f + 0.5;\n"
+                         "  texcoord.y = 0.5 - pos.y / %f;\n"
+                         "}\n",
+                         2.0 * w_factor, 2.0 * h_factor);
+        vs[sizeof(vs) - 1] = 0;
+        GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
+        const char *fs = "#extension GL_OES_EGL_image_external : enable\n"
+                                         "precision mediump float;\n"
+                                         "uniform samplerExternalOES s;\n"
+                                         "varying vec2 texcoord;\n"
+                                         "void main() {\n"
+                                         "  gl_FragColor = texture2D(s, texcoord);\n"
+                                         "}\n";
+        GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
+        prog = link_program(vs_s, fs_s);
+
+        glUseProgram(prog);
+
+        static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, 0, -w_factor, 0 };
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        glEnableVertexAttribArray(0);
+
+*/	
+}
+
+
+
+
 
 int main(int argc, char *argv[])
 {
@@ -203,6 +309,7 @@ int main(int argc, char *argv[])
 	{
 		LibcameraEncoder app;
 		VideoOptions *options = app.GetOptions();
+		//eglDisp = get_egl_display_or_skip();
 		if (options->Parse(argc, argv))
 		{
 			if (options->verbose >= 2)

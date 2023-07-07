@@ -911,7 +911,7 @@ void LibcameraApp::requestComplete(Request *request)
 
 		return;
 	}
-	std::cout << "Request Complete";
+	std::cout << "Request Complete\n";
 	CompletedRequest *r = new CompletedRequest(sequence_++, request);
 	CompletedRequestPtr payload(r, [this](CompletedRequest *cr) { this->queueRequest(cr); });
 	{
@@ -944,6 +944,7 @@ void LibcameraApp::previewDoneCallback(int fd)
 
 void LibcameraApp::startPreview()
 {
+	std::cout<<"startPreview()\n";
 	preview_abort_ = false;
 	preview_thread_ = std::thread(&LibcameraApp::previewThread, this);
 }

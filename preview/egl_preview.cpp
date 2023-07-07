@@ -25,6 +25,7 @@
 
 #include <epoxy/egl.h>
 #include <epoxy/gl.h>
+#include <iostream>
 
 class EglPreview : public Preview
 {
@@ -74,6 +75,7 @@ private:
 	int height_;
 	unsigned int max_image_width_;
 	unsigned int max_image_height_;
+	GLint prog;
 };
 
 static GLint compile_shader(GLenum target, const char *source)
@@ -130,7 +132,7 @@ static GLint link_program(GLint vs, GLint fs)
 	return prog;
 }
 
-static void gl_setup(int width, int height, int window_width, int window_height)
+static GLint gl_setup(int width, int height, int window_width, int window_height)
 {
 	float w_factor = width / (float)window_width;
 	float h_factor = height / (float)window_height;
@@ -138,6 +140,7 @@ static void gl_setup(int width, int height, int window_width, int window_height)
 	w_factor /= max_dimension;
 	h_factor /= max_dimension;
 	char vs[256];
+	std::cout << "GL setup \n";
 	snprintf(vs, sizeof(vs),
 			 "attribute vec4 pos;\n"
 			 "varying vec2 texcoord;\n"
@@ -162,9 +165,11 @@ static void gl_setup(int width, int height, int window_width, int window_height)
 
 	glUseProgram(prog);
 
-	static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
+	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
+	static const float verts[] = { -w_factor, 0, w_factor, 0, w_factor, h_factor, -w_factor, h_factor };
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
 	glEnableVertexAttribArray(0);
+	return prog;
 }
 
 EglPreview::EglPreview(Options const *options) : Preview(options), last_fd_(-1), first_time_(true)
@@ -245,7 +250,7 @@ void EglPreview::makeWindow(char const *name)
 	Window root = RootWindow(display_, screen_num);
 	int screen_width = DisplayWidth(display_, screen_num);
 	int screen_height = DisplayHeight(display_, screen_num);
-
+	std::cout <<"makeWindow\n";
 	// Default behaviour here is to use a 1024x768 window.
 	if (width_ == 0 || height_ == 0)
 	{
@@ -362,7 +367,7 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		// This stuff has to be delayed until we know we're in the thread doing the display.
 		if (!eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_))
 			throw std::runtime_error("eglMakeCurrent failed");
-		gl_setup(info.width, info.height, width_, height_);
+		prog=gl_setup(info.width, info.height, width_, height_);
 		first_time_ = false;
 	}
 
@@ -410,21 +415,85 @@ void EglPreview::SetInfoText(const std::string &text)
 		XStoreName(display_, window_, text.c_str());
 }
 
+#define IMAGE_WIDTH 1920
+
 void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &info)
 {
+//	glUseProgram(prog);
 	Buffer &buffer = buffers_[fd];
 	if (buffer.fd == -1)
 		makeBuffer(fd, span.size(), info, buffer);
+        uint8_t *ptr = (uint8_t *)span.data();
+	
+         float outputy[IMAGE_WIDTH];
+         float outputu[IMAGE_WIDTH];
+         float outputv[IMAGE_WIDTH];
+         static float output[IMAGE_WIDTH*2];
+       ////     const float yFac = 1.0;
+        ///     const float uFac = 0;
+        //      const float vFac = 0;
+         float slope = 0;
+        //uint16_t cy,cu,cv;
+         uint32_t total = info.width * info.height;
+              std::cout << "Show"<<info.width<<"\n";
+	 float maxY = 0;
+         for(uint16_t x =0; x<info.width; x++){
+//                      std::cout << "x="<<x<<"\n";
+                 outputy[x]=0;
+                 outputu[x]=0;
+                 outputv[x]=0;
+                 for(uint16_t y=0; y<info.height;y++){
+                         int16_t x2 = x + slope*y;
+//                       std::cout << "y="<<y<<" x2="<<x2<<"\n";
+                         if(x2>=0 && x2<(uint16_t)info.width){
+                                 outputy[x] = ptr[y * info.width + x2];
+                                 outputu[x] = ptr[( y / 2) * (info.width / 2) + (x / 2) + total];
+                                 outputv[x] = ptr[( y / 2) * (info.width / 2) + (x / 2) + total + (total / 4)];
+                              //        output[x] += cy*yFac + cu*uFac + cv*vFac;
+                         }
+                 }
+		 if(maxY< outputy[x]){
+			 maxY=outputy[x];
+		 }
+         }
+	 maxY = 1/maxY;
+         for(uint16_t x =0; x<info.width; x++){
+		output[x*2]=x/info.width;
+	 	output[x*2+1]=outputy[x]*maxY;
+	 }
+	 uint16_t x=info.width-1;
+	 output[x*2+2]=1;
+	 output[x*2+3]=0;
+	 output[x*2+2]=0;
+	 output[x*2+3]=0;
 
+         x = 0;
+         std::cout << "red x=" << x << " = " << output[x*2]/info.width << ","<< outputu[x]/info.width<<","<<outputv[x]/info.width<<"\n";
+
+
+
+//	GLuint vbo0;
+//	glGenBuffers(1, &vbo0);
 	glClearColor(0, 0, 0, 0);
 	glClear(GL_COLOR_BUFFER_BIT);
-
 	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
 	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+//	GLuint vbo;
+//	glGenBuffers(1, &vbo);
+//	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+//	glBufferData(GL_ARRAY_BUFFER, sizeof(output[0])*info.width, output, GL_DYNAMIC_DRAW);
+//	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_INT, 0);
+//	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
+  //  	glEnableVertexAttribArray(0);
+
+
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)
 		done_callback_(last_fd_);
 	last_fd_ = fd;
+
+
 }
 
 void EglPreview::Reset()

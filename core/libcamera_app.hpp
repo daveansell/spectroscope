@@ -139,6 +139,7 @@ public:
 		std::sort(cameras.begin(), cameras.end(), [](auto l, auto r) { return l->id() > r->id(); });
 		return cameras;
 	}
+	std::unique_ptr<Preview> preview_;
 
 protected:
 	std::unique_ptr<Options> options_;
@@ -241,7 +242,6 @@ private:
 	MessageQueue<Msg> msg_queue_;
 	std::vector<SensorMode> sensor_modes_;
 	// Related to the preview window.
-	std::unique_ptr<Preview> preview_;
 	std::map<int, CompletedRequestPtr> preview_completed_requests_;
 	std::mutex preview_mutex_;
 	std::mutex preview_item_mutex_;

@@ -76,6 +76,10 @@ private:
 	unsigned int max_image_width_;
 	unsigned int max_image_height_;
 	GLint prog;
+	GLint progShrink;
+	GLint progGraph;
+	GLuint renderFramebufferName[1];
+	GLuint renderedTexture[1];
 };
 
 static GLint compile_shader(GLenum target, const char *source)
@@ -131,8 +135,7 @@ static GLint link_program(GLint vs, GLint fs)
 
 	return prog;
 }
-
-static GLint gl_setup(int width, int height, int window_width, int window_height)
+static GLint gl_setupGraph(int width, int height, int window_width, int window_height)
 {
 	float w_factor = width / (float)window_width;
 	float h_factor = height / (float)window_height;
@@ -147,10 +150,151 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 			 "\n"
 			 "void main() {\n"
 			 "  gl_Position = pos;\n"
-			 "  texcoord.x = pos.x / %f + 0.5;\n"
-			 "  texcoord.y = 0.5 - pos.y / %f;\n"
+			 "  texcoord.x = pos.x;\n"
+			 "  texcoord.y = pos.y;\n"
+			 "}\n"
+			 );
+	vs[sizeof(vs) - 1] = 0;
+	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
+	const char *fs = 		"precision mediump float;\n"
+					 "uniform sampler2D s;\n"
+					 "uniform float scale;\n"
+					 "varying vec2 texcoord;\n"
+					 "void main() {\n"
+					 "if( texcoord.y < texture2D(s, vec2(texcoord.x,0)).x*scale){\n"
+					 //"if( texcoord.y < texcoord.x){\n"
+					 "  gl_FragColor = vec4(1,0,1,1);\n"
+					 "}else{\n"
+					 "  gl_FragColor = vec4(0,0,0,1);\n"
+					 "}\n"
+					 "}\n";
+	GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
+	GLint prog = link_program(vs_s, fs_s);
+
+	glUseProgram(prog);
+
+	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
+	return prog;
+}
+static GLint gl_setupShrinkData(int width, int height, int window_width, int window_height)
+{
+	float w_factor = width / (float)window_width;
+	float h_factor = height / (float)window_height ;
+	float max_dimension = std::max(w_factor, h_factor);
+	w_factor /= max_dimension;
+	h_factor /= max_dimension;
+	char vs[256];
+	std::cout << "GL setup shrinkData\n";
+	snprintf(vs, sizeof(vs),
+			 "attribute vec4 pos;\n"
+			 "varying vec2 texcoord;\n"
+			 "void main() {\n"
+			 "  gl_Position = pos;\n"
+			 "  texcoord.x = pos.x;\n"
+			 "  texcoord.y = pos.y;\n"
+			 "}\n"
+			 );
+	vs[sizeof(vs) - 1] = 0;
+	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
+	char fs[456];
+                                         //"gl_FragColor = vec4(total,total*10.0,total*100.0,total*1000.0);\n"
+	snprintf(fs, sizeof(fs),  	 
+					"#version 100 \n"
+					"precision highp float;\n"
+					 "uniform sampler2D s;\n"
+					 "varying vec2 texcoord;\n"
+					 "uniform float slope;\n"
+					 "void main() {\n"
+					 "  float total=0.0;\n"
+					 "for(int i=0;i<%i;i++){\n"
+                                        "    float x2=slope*float(i);"
+                                        "    vec4 p = texture2D(s, vec2(texcoord.x+x2, %f*float(i)+%f*float(texcoord.y) ));\n"
+                                        "    total=total+ p.x * %f + p.y *%f + p.z*%f;\n"
+                                        "}\n"
+                                         "gl_FragColor = vec4(texcoord.x,texcoord.x*2.0,texcoord.x*4.0,texcoord.x*8.0);\n"
+                                         "}\n",
+                                        height,
+                                        1.0/height/4,
+					4.0/height,
+					1.0/height,
+					1.0/height,
+					1.0/height
+	);
+	fs[sizeof(fs) - 1] = 0;
+	GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
+	GLint prog = link_program(vs_s, fs_s);
+
+	glUseProgram(prog);
+
+	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
+	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, 0, -w_factor, 0 };
+	return prog;
+}
+
+static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebufferName, GLuint *renderedTexture){
+
+	glUseProgram(prog);
+	//glGenFramebuffers(1, renderFramebufferName);
+	//glBindFramebuffer(GL_FRAMEBUFFER, *renderFramebufferName);
+	//glGenTextures(1, renderedTexture);
+	glDisable(GL_DEPTH_TEST);
+	glGenFramebuffers(1, renderFramebufferName);
+	glGenTextures(1, renderedTexture);
+	glBindTexture(GL_TEXTURE_2D, renderedTexture[0]);
+//	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB32F, 1024, 64, 0,GL_RGB, GL_FLOAT, 0);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT, null);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindFramebuffer(GL_FRAMEBUFFER, renderFramebufferName[0]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderedTexture[0], 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// "Bind" the newly created texture : all future texture functions will modify this texture
+	//glBindTexture(GL_TEXTURE_2D, *renderedTexture);
+	//glActiveTexture(GL_TEXTURE1);
+	// Give an empty image to OpenGL ( the last "0" )
+	//glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, width, 2, 0,GL_RGB, GL_FLOAT, 0);
+
+	// Poor filtering. Needed !
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	// Set "renderedTexture" as our colour attachement #0
+	//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, *renderedTexture, 0);
+
+	// Set the list of draw buffers.
+	//GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
+	//glDrawBuffers(1, DrawBuffers); // "1" is the size of DrawBuffers
+	// Always check that our framebuffer is ok
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "FrameBuffer issue\n";
+	std::cout << "RenderFrameBufferName First = " << renderFramebufferName << "\n";
+}
+
+
+static GLint gl_setup(int width, int height, int window_width, int window_height)
+{
+	float w_factor = width / (float)window_width;
+	float h_factor = height / ( (float)window_height/2 );
+	float max_dimension = std::max(w_factor, h_factor);
+	w_factor /= max_dimension;
+	h_factor /= max_dimension;
+	char vs[256];
+	std::cout << "GL setup \n";
+	snprintf(vs, sizeof(vs),
+			 "attribute vec4 pos;\n"
+			 "varying vec2 texcoord;\n"
+			 "\n"
+			 "void main() {\n"
+			 "  gl_Position = pos;\n"
+			 "  texcoord.x = pos.x * %f + 0.5;\n"
+			 "  texcoord.y = 0.5 - pos.y * %f;\n"
 			 "}\n",
-			 2.0 * w_factor, 2.0 * h_factor);
+			 //1.0 / (2.0 * w_factor), 1.0 /( 2.0 * h_factor));
+			 0.5 / ( w_factor), 0.5 /(  h_factor));
 	vs[sizeof(vs) - 1] = 0;
 	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
 	const char *fs = "#extension GL_OES_EGL_image_external : enable\n"
@@ -164,11 +308,15 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 	GLint prog = link_program(vs_s, fs_s);
 
 	glUseProgram(prog);
+	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor,
+	//static const float vertsShrink[] = { 
+		-1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0,// };
+//	static const float vertsGraph[] = { 
+		-1, -1, 1, -1, 1, 1, -1, 1 };
 
 	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
-	static const float verts[] = { -w_factor, 0, w_factor, 0, w_factor, h_factor, -w_factor, h_factor };
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
 	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, vertsVid);
 	return prog;
 }
 
@@ -254,8 +402,8 @@ void EglPreview::makeWindow(char const *name)
 	// Default behaviour here is to use a 1024x768 window.
 	if (width_ == 0 || height_ == 0)
 	{
-		width_ = 1024;
-		height_ = 768;
+		width_ = 1920;
+		height_ = 1080;
 	}
 
 	if (options_->fullscreen || x_ + width_ > screen_width || y_ + height_ > screen_height)
@@ -367,8 +515,10 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		// This stuff has to be delayed until we know we're in the thread doing the display.
 		if (!eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_))
 			throw std::runtime_error("eglMakeCurrent failed");
+		progShrink=gl_setupShrinkData(info.width, info.height, width_, height_);
+		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
-		first_time_ = false;
+//	first_time_ = false;
 	}
 
 	buffer.fd = fd;
@@ -400,6 +550,7 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 	if (!image)
 		throw std::runtime_error("failed to import fd " + std::to_string(fd));
 
+	glActiveTexture(GL_TEXTURE0);
 	glGenTextures(1, &buffer.texture);
 	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
 	glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -419,10 +570,21 @@ void EglPreview::SetInfoText(const std::string &text)
 
 void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &info)
 {
-//	glUseProgram(prog);
+///	float w_factor = info.width / (float)width_;
+//	float h_factor = info.height / (float)height_;
+//	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
+//	static const float vertsShrink[] = { -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
+//	static const float vertsGraph[] = { -1, -1, 1, -1, 1, 1, -1, 1 };
 	Buffer &buffer = buffers_[fd];
-	if (buffer.fd == -1)
+	if (buffer.fd == -1){
 		makeBuffer(fd, span.size(), info, buffer);
+		if(first_time_){
+		setupRenderFrameBuffer(progShrink, info.width, &renderFramebufferName[0], &renderedTexture[0]);
+		first_time_=false;
+		}
+	}
+	std::cout << "width=" << width_ << " height=" << height_ << "\n";
+	/*
         uint8_t *ptr = (uint8_t *)span.data();
 	
          float outputy[IMAGE_WIDTH];
@@ -469,24 +631,120 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 
          x = 0;
          std::cout << "red x=" << x << " = " << output[x*2]/info.width << ","<< outputu[x]/info.width<<","<<outputv[x]/info.width<<"\n";
-
-
-
-//	GLuint vbo0;
-//	glGenBuffers(1, &vbo0);
+*/
+	unsigned int err = 0;
 	glClearColor(0, 0, 0, 0);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
-	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	// ***********************
+	// Display normal video
+	// ***********************
+	glUseProgram(prog);
+	glActiveTexture(GL_TEXTURE0);
+	if((err = glGetError())){
+		std::cout << "C1 " << err << "\n";
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	if((err = glGetError())){
+		std::cout << "C2 " << err << "\n";
+	}
 
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "FrameBuffer issue\n";
+	glClear(GL_COLOR_BUFFER_BIT);
+	if((err = glGetError())){
+		std::cout << "C1 " << err << "\n";
+	}
+	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
+	if((err = glGetError())){
+		std::cout << "C1 " << err << "\n";
+	}
+	glViewport(0,height_/2,width_,height_/2);
+	if((err = glGetError())){
+		std::cout << "C1 " << err << "\n";
+	}
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+	if((err = glGetError())){
+		std::cout << "C1 " << err << "\n";
+	}
+
+//      ***************************
+//      Shink data down
+//      *****************************
+	glUseProgram(progShrink);
+	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
+	glBindFramebuffer(GL_FRAMEBUFFER, renderFramebufferName[0]);
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "FrameBuffer Shrink issue\n";
+	glUniform1f( glGetUniformLocation(progShrink, "slope"), 0.0);
+	glUniform1i( glGetUniformLocation(progShrink, "s"), 0);
+	glViewport(0,0,info.width,16);
+	glDrawArrays(GL_TRIANGLE_FAN, 4, 4);
+	if((err = glGetError())){
+		std::cout << "A6 " << err << "\n";
+	}
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE){
+		std::cout << "FrameBuffer Shrink issue2-"<< glCheckFramebufferStatus(GL_FRAMEBUFFER) <<"-\n";
+		switch(glCheckFramebufferStatus(GL_FRAMEBUFFER)){
+			case GL_FRAMEBUFFER_UNDEFINED:
+				std::cout << "GL_FRAMEBUFFER_UNDEFINED";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+				std::cout << "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+				std::cout << "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+				break;
+			case GL_FRAMEBUFFER_UNSUPPORTED:
+				std::cout << "GL_FRAMEBUFFER_UNSUPPORTED";
+				break;
+			case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+				std::cout <<"GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+				break;
+		};
+	}
+	std::cout << "RenderFrameBufferName = " << renderFramebufferName << "\n";
+	GLubyte* pixels = new GLubyte[info.width * 4 * 4];
+	glReadPixels(0, 0, info.width, 4, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+	if((err = glGetError())){
+		std::cout << "A7 " << err << "\n";
+	}
+//	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
+	float scale=0;
+	// map pixel buffer
+	
+	for(unsigned int i=0; i < info.width; i++){
+		for(unsigned int j=0; j < 4; j++){
+			scale+= pixels[i*4 + j*4*info.width];
+			scale+= pixels[i*4+1 + j*4*info.width];
+			scale+= pixels[i*4+2 + j*4*info.width];
+			scale+= pixels[i*4+3 + j*4*info.width];
+		}
+		std::cout << (int)pixels[i*4] << "," << (int)pixels[i*4+1] << "," << (int)pixels[i*4+2] << "," <<  (int)pixels[i*4+3] << "\n";
+	}
+	scale/=(info.width*3*4);
+	std::cout<<"Scale = " << scale << "\n";
+	// ************************
+	// Draw Graph
+	// ************************
+	glUseProgram(progGraph);
+//	glEnableVertexAttribArray(1);
+//	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, vertsGraph);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "FrameBuffer Graph issue\n";
+	glUniform1i(glGetUniformLocation(progGraph,"s"), 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, renderedTexture[0]);
+	glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0/scale);
+	glViewport(0,0,width_,height_/2);
+	//glClear(GL_COLOR_BUFFER_BIT);
+	glDrawArrays(GL_TRIANGLE_FAN, 8, 4);
 //	GLuint vbo;
 //	glGenBuffers(1, &vbo);
 //	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 //	glBufferData(GL_ARRAY_BUFFER, sizeof(output[0])*info.width, output, GL_DYNAMIC_DRAW);
-//	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_INT, 0);
+//	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_BYTE, 0);
 //	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
   //  	glEnableVertexAttribArray(0);
-
 
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)

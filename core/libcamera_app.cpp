@@ -911,7 +911,7 @@ void LibcameraApp::requestComplete(Request *request)
 
 		return;
 	}
-	std::cout << "Request Complete\n";
+//	std::cout << "Request Complete\n";
 	CompletedRequest *r = new CompletedRequest(sequence_++, request);
 	CompletedRequestPtr payload(r, [this](CompletedRequest *cr) { this->queueRequest(cr); });
 	{

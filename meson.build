@@ -8,7 +8,6 @@ project('libcamera-apps', 'c', 'cpp',
             'buildtype=release',
         ],
         license : 'BSD-2-Clause')
-
 meson.add_dist_script('utils' / 'gen-dist.sh')
 
 cpp_arguments = ['-pedantic', '-Wno-unused-parameter', '-faligned-new']

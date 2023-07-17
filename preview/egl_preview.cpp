@@ -26,7 +26,7 @@
 #include <epoxy/egl.h>
 #include <epoxy/gl.h>
 #include <iostream>
-
+#include <thread>
 class EglPreview : public Preview
 {
 public:
@@ -80,6 +80,9 @@ private:
 	GLint progGraph;
 	GLuint renderFramebufferName[1];
 	GLuint renderedTexture[1];
+	uint32_t *shrunk;
+	GLubyte * graphData;
+	GLubyte* pixels;
 };
 
 static GLint compile_shader(GLenum target, const char *source)
@@ -155,15 +158,21 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 			 "}\n"
 			 );
 	vs[sizeof(vs) - 1] = 0;
+       	//+ 0.00390625*p.y;\n"
+	//"float x=float(texcoord.x)*0.5*0.25 + 0.5*0.25;\n"
 	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
 	const char *fs = 		"precision mediump float;\n"
 					 "uniform sampler2D s;\n"
 					 "uniform float scale;\n"
 					 "varying vec2 texcoord;\n"
 					 "void main() {\n"
-					 "if( texcoord.y < texture2D(s, vec2(texcoord.x,0)).x*scale){\n"
-					 //"if( texcoord.y < texcoord.x){\n"
+					 "float x=float(texcoord.x)*0.5 + 0.5;\n"
+					 "vec4 p = texture2D(s, vec2(x,0));\n"
+					 "float v = p.x;\n"
+					 "if( texcoord.y*0.5 +0.5 < v){\n"
 					 "  gl_FragColor = vec4(1,0,1,1);\n"
+					 "}else if( texcoord.y*0.5 +0.5 > v){\n"
+					 "  gl_FragColor = vec4(1,1,0,1);\n"
 					 "}else{\n"
 					 "  gl_FragColor = vec4(0,0,0,1);\n"
 					 "}\n"
@@ -207,7 +216,7 @@ static GLint gl_setupShrinkData(int width, int height, int window_width, int win
 					 "void main() {\n"
 					 "  float total=0.0;\n"
 					 "for(int i=0;i<%i;i++){\n"
-                                        "    float x2=slope*float(i);"
+                                        "    float x2=slope*float(i);\n"
                                         "    vec4 p = texture2D(s, vec2(texcoord.x+x2, %f*float(i)+%f*float(texcoord.y) ));\n"
                                         "    total=total+ p.x * %f + p.y *%f + p.z*%f;\n"
                                         "}\n"
@@ -255,13 +264,15 @@ static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebuf
 
 	// "Bind" the newly created texture : all future texture functions will modify this texture
 	//glBindTexture(GL_TEXTURE_2D, *renderedTexture);
-	//glActiveTexture(GL_TEXTURE1);
+	glActiveTexture(GL_TEXTURE1);
 	// Give an empty image to OpenGL ( the last "0" )
-	//glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, width, 2, 0,GL_RGB, GL_FLOAT, 0);
+	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, width, 2, 1,GL_RGB, GL_UNSIGNED_BYTE, 0);
 
 	// Poor filtering. Needed !
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	// Set "renderedTexture" as our colour attachement #0
 	//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, *renderedTexture, 0);
 
@@ -271,7 +282,7 @@ static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebuf
 	// Always check that our framebuffer is ok
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		std::cout << "FrameBuffer issue\n";
-	std::cout << "RenderFrameBufferName First = " << renderFramebufferName << "\n";
+//	std::cout << "RenderFrameBufferName First = " << renderFramebufferName << "\n";
 }
 
 
@@ -518,6 +529,8 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		progShrink=gl_setupShrinkData(info.width, info.height, width_, height_);
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
+		shrunk = new uint32_t[info.width+2];
+       		pixels = new GLubyte[info.width * info.height * 4+20];
 //	first_time_ = false;
 	}
 
@@ -568,10 +581,34 @@ void EglPreview::SetInfoText(const std::string &text)
 
 #define IMAGE_WIDTH 1920
 
+
+void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t height, uint32_t * output, uint32_t * maxVal, float slope){
+	*maxVal = 0;
+	for(uint16_t x=x0; x<x1; x++){
+		output[x]=0;
+		for(uint16_t y=0; y<height; y++){
+			int x2 = x+slope * y;
+			if (x2<0) x2=0;
+			if (x2>width-1) x2=width-1;
+			output[x] += data[(y*width+x+x2)];
+//			output[x] += data[4*(y*width+x+x2) + 1];
+//			output[x] += data[4*(y*width+x+x2) + 2];
+		}
+		//output[x]/=height;
+		if(output[x]>*maxVal){
+			*maxVal=output[x];
+		}
+	}
+	
+}
+
 void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &info)
 {
-///	float w_factor = info.width / (float)width_;
-//	float h_factor = info.height / (float)height_;
+	float w_factor = info.width / (float)width_;
+	float h_factor = info.height / (float)height_;
+	float max_dimension = std::max(w_factor, h_factor);
+	w_factor /= max_dimension;
+	h_factor /= max_dimension;
 //	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 //	static const float vertsShrink[] = { -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
 //	static const float vertsGraph[] = { -1, -1, 1, -1, 1, 1, -1, 1 };
@@ -580,148 +617,55 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		makeBuffer(fd, span.size(), info, buffer);
 		if(first_time_){
 		setupRenderFrameBuffer(progShrink, info.width, &renderFramebufferName[0], &renderedTexture[0]);
+		graphData = new GLubyte[info.width*4+1];
 		first_time_=false;
 		}
 	}
-	std::cout << "width=" << width_ << " height=" << height_ << "\n";
-	/*
-        uint8_t *ptr = (uint8_t *)span.data();
-	
-         float outputy[IMAGE_WIDTH];
-         float outputu[IMAGE_WIDTH];
-         float outputv[IMAGE_WIDTH];
-         static float output[IMAGE_WIDTH*2];
-       ////     const float yFac = 1.0;
-        ///     const float uFac = 0;
-        //      const float vFac = 0;
-         float slope = 0;
-        //uint16_t cy,cu,cv;
-         uint32_t total = info.width * info.height;
-              std::cout << "Show"<<info.width<<"\n";
-	 float maxY = 0;
-         for(uint16_t x =0; x<info.width; x++){
-//                      std::cout << "x="<<x<<"\n";
-                 outputy[x]=0;
-                 outputu[x]=0;
-                 outputv[x]=0;
-                 for(uint16_t y=0; y<info.height;y++){
-                         int16_t x2 = x + slope*y;
-//                       std::cout << "y="<<y<<" x2="<<x2<<"\n";
-                         if(x2>=0 && x2<(uint16_t)info.width){
-                                 outputy[x] = ptr[y * info.width + x2];
-                                 outputu[x] = ptr[( y / 2) * (info.width / 2) + (x / 2) + total];
-                                 outputv[x] = ptr[( y / 2) * (info.width / 2) + (x / 2) + total + (total / 4)];
-                              //        output[x] += cy*yFac + cu*uFac + cv*vFac;
-                         }
-                 }
-		 if(maxY< outputy[x]){
-			 maxY=outputy[x];
-		 }
-         }
-	 maxY = 1/maxY;
-         for(uint16_t x =0; x<info.width; x++){
-		output[x*2]=x/info.width;
-	 	output[x*2+1]=outputy[x]*maxY;
-	 }
-	 uint16_t x=info.width-1;
-	 output[x*2+2]=1;
-	 output[x*2+3]=0;
-	 output[x*2+2]=0;
-	 output[x*2+3]=0;
-
-         x = 0;
-         std::cout << "red x=" << x << " = " << output[x*2]/info.width << ","<< outputu[x]/info.width<<","<<outputv[x]/info.width<<"\n";
-*/
-	unsigned int err = 0;
+	//std::cout << "width=" << width_ << " height=" << height_ << "\n";
 	glClearColor(0, 0, 0, 0);
 	// ***********************
 	// Display normal video
 	// ***********************
 	glUseProgram(prog);
 	glActiveTexture(GL_TEXTURE0);
-	if((err = glGetError())){
-		std::cout << "C1 " << err << "\n";
-	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	if((err = glGetError())){
-		std::cout << "C2 " << err << "\n";
-	}
 
-	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-		std::cout << "FrameBuffer issue\n";
 	glClear(GL_COLOR_BUFFER_BIT);
-	if((err = glGetError())){
-		std::cout << "C1 " << err << "\n";
-	}
 	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
-	if((err = glGetError())){
-		std::cout << "C1 " << err << "\n";
-	}
 	glViewport(0,height_/2,width_,height_/2);
-	if((err = glGetError())){
-		std::cout << "C1 " << err << "\n";
-	}
 	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-	if((err = glGetError())){
-		std::cout << "C1 " << err << "\n";
-	}
 
-//      ***************************
-//      Shink data down
-//      *****************************
-	glUseProgram(progShrink);
-	glBindTexture(GL_TEXTURE_EXTERNAL_OES, buffer.texture);
-	glBindFramebuffer(GL_FRAMEBUFFER, renderFramebufferName[0]);
-	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-		std::cout << "FrameBuffer Shrink issue\n";
-	glUniform1f( glGetUniformLocation(progShrink, "slope"), 0.0);
-	glUniform1i( glGetUniformLocation(progShrink, "s"), 0);
-	glViewport(0,0,info.width,16);
-	glDrawArrays(GL_TRIANGLE_FAN, 4, 4);
-	if((err = glGetError())){
-		std::cout << "A6 " << err << "\n";
-	}
-	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE){
-		std::cout << "FrameBuffer Shrink issue2-"<< glCheckFramebufferStatus(GL_FRAMEBUFFER) <<"-\n";
-		switch(glCheckFramebufferStatus(GL_FRAMEBUFFER)){
-			case GL_FRAMEBUFFER_UNDEFINED:
-				std::cout << "GL_FRAMEBUFFER_UNDEFINED";
-				break;
-			case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-				std::cout << "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
-				break;
-			case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-				std::cout << "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
-				break;
-			case GL_FRAMEBUFFER_UNSUPPORTED:
-				std::cout << "GL_FRAMEBUFFER_UNSUPPORTED";
-				break;
-			case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
-				std::cout <<"GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
-				break;
-		};
-	}
-	std::cout << "RenderFrameBufferName = " << renderFramebufferName << "\n";
-	GLubyte* pixels = new GLubyte[info.width * 4 * 4];
-	glReadPixels(0, 0, info.width, 4, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-	if((err = glGetError())){
-		std::cout << "A7 " << err << "\n";
-	}
+	//std::cout << "RenderFrameBufferName = " << renderFramebufferName << "\n";
+	uint32_t max1, max2, max3, max4;
+	//libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
+        pixels = (GLubyte *)span.data();
+
+//	glReadPixels(0, 0, info.width, info.height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+//	Shrink(pixels, 0, info.width/4, info.width, info.height, shrunk, &max1,0 );
+	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, shrunk, &max1,0 );
+	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, shrunk, &max2,0 );
+	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, shrunk, &max3,0 );
+	std::thread t4(&Shrink, pixels, 3*info.width/4, info.width, info.width, info.height, shrunk, &max4,0 );
+	t1.join();
+	t2.join();
+	t3.join();
+	t4.join();
+	if(max2>max1) max1=max2;
+	if(max3>max1) max1=max3;
+	if(max4>max1) max1=max4;
+
 //	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
-	float scale=0;
+	float scale=(256.0*256-1)/max1;
 	// map pixel buffer
+	for(uint16_t i=0; i<info.width*4; i+=4){
+		uint16_t value = scale * shrunk[i];
+		graphData[i] =   value / 256;
+		graphData[i+1] =  value % 256; 
+		graphData[i+2] =  0;//value/256;//value % 256; 
+		graphData[i+3] =  0;//value/256;//value % 256; 
+	}	
+	std::cout << (int)shrunk[0]<< "  " << (int)graphData[0] << "-" << (int)graphData[1] << "," << (int)graphData[2] << "-" << (int)graphData[3] << "\n";
 	
-	for(unsigned int i=0; i < info.width; i++){
-		for(unsigned int j=0; j < 4; j++){
-			scale+= pixels[i*4 + j*4*info.width];
-			scale+= pixels[i*4+1 + j*4*info.width];
-			scale+= pixels[i*4+2 + j*4*info.width];
-			scale+= pixels[i*4+3 + j*4*info.width];
-		}
-		std::cout << (int)pixels[i*4] << "," << (int)pixels[i*4+1] << "," << (int)pixels[i*4+2] << "," <<  (int)pixels[i*4+3] << "\n";
-	}
-	scale/=(info.width*3*4);
-	std::cout<<"Scale = " << scale << "\n";
 	// ************************
 	// Draw Graph
 	// ************************
@@ -731,11 +675,17 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		std::cout << "FrameBuffer Graph issue\n";
-	glUniform1i(glGetUniformLocation(progGraph,"s"), 0);
 	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, renderedTexture[0]);
-	glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0/scale);
-	glViewport(0,0,width_,height_/2);
+	glBindTexture(GL_TEXTURE_2D,renderedTexture[0]);
+	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, graphData);
+	glUniform1i(glGetUniformLocation(progGraph,"s"), 1);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	// Give an empty image to OpenGL ( the last "0" )
+	//glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
+	glViewport( (1.0-w_factor/2)/2*width_,0,width_*w_factor/2,height_/2);
 	//glClear(GL_COLOR_BUFFER_BIT);
 	glDrawArrays(GL_TRIANGLE_FAN, 8, 4);
 //	GLuint vbo;

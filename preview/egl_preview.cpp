@@ -161,82 +161,66 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
        	//+ 0.00390625*p.y;\n"
 	//"float x=float(texcoord.x)*0.5*0.25 + 0.5*0.25;\n"
 	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
-	const char *fs = 		"precision mediump float;\n"
+	char fs[1024];
+
+	/*
+					 "	if( y < x){\n"
+					 "		gl_FragColor = vec4(1.0,0.0,0.0,1.0);\n"
+					 "	}else if( y-1.0 < x){\n"
+					 "		if( y < 0.5){\n"
+					 "			gl_FragColor = vec4(1.0,1.0,0.0,1.0);\n"
+					 "		} else if( y > 0.9){\n"
+					 "			gl_FragColor = vec4(1.0,1.0,1.0,1.0);\n"
+					 "		}else{\n"
+					 "			gl_FragColor = vec4(0.0,0.0,1.0,1.0);\n"
+					 "		}\n"
+					 "	}else{\n"
+					 "		gl_FragColor = vec4(0.0,0.0,0.0,0.0);\n"
+					 "	}\n"
+
+	 
+*/
+	/*
+	 * x and y varying from 0 to 1 
+	 */
+	snprintf(fs, sizeof(fs),
+			 		 "precision mediump float;\n"
 					 "uniform sampler2D s;\n"
 					 "uniform float scale;\n"
 					 "varying vec2 texcoord;\n"
 					 "void main() {\n"
-					 "float x=float(texcoord.x)*0.5 + 0.5;\n"
-					 "vec4 p = texture2D(s, vec2(x,0));\n"
-					 "float v = p.x;\n"
-					 "if( texcoord.y*0.5 +0.5 < v){\n"
-					 "  gl_FragColor = vec4(1,0,1,1);\n"
-					 "}else if( texcoord.y*0.5 +0.5 > v){\n"
-					 "  gl_FragColor = vec4(1,1,0,1);\n"
-					 "}else{\n"
-					 "  gl_FragColor = vec4(0,0,0,1);\n"
-					 "}\n"
-					 "}\n";
-	GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
-	GLint prog = link_program(vs_s, fs_s);
-
-	glUseProgram(prog);
-
-	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
-	return prog;
-}
-static GLint gl_setupShrinkData(int width, int height, int window_width, int window_height)
-{
-	float w_factor = width / (float)window_width;
-	float h_factor = height / (float)window_height ;
-	float max_dimension = std::max(w_factor, h_factor);
-	w_factor /= max_dimension;
-	h_factor /= max_dimension;
-	char vs[256];
-	std::cout << "GL setup shrinkData\n";
-	snprintf(vs, sizeof(vs),
-			 "attribute vec4 pos;\n"
-			 "varying vec2 texcoord;\n"
-			 "void main() {\n"
-			 "  gl_Position = pos;\n"
-			 "  texcoord.x = pos.x;\n"
-			 "  texcoord.y = pos.y;\n"
-			 "}\n"
-			 );
-	vs[sizeof(vs) - 1] = 0;
-	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
-	char fs[456];
-                                         //"gl_FragColor = vec4(total,total*10.0,total*100.0,total*1000.0);\n"
-	snprintf(fs, sizeof(fs),  	 
-					"#version 100 \n"
-					"precision highp float;\n"
-					 "uniform sampler2D s;\n"
-					 "varying vec2 texcoord;\n"
-					 "uniform float slope;\n"
-					 "void main() {\n"
-					 "  float total=0.0;\n"
-					 "for(int i=0;i<%i;i++){\n"
-                                        "    float x2=slope*float(i);\n"
-                                        "    vec4 p = texture2D(s, vec2(texcoord.x+x2, %f*float(i)+%f*float(texcoord.y) ));\n"
-                                        "    total=total+ p.x * %f + p.y *%f + p.z*%f;\n"
-                                        "}\n"
-                                         "gl_FragColor = vec4(texcoord.x,texcoord.x*2.0,texcoord.x*4.0,texcoord.x*8.0);\n"
-                                         "}\n",
-                                        height,
-                                        1.0/height/4,
-					4.0/height,
-					1.0/height,
-					1.0/height,
-					1.0/height
-	);
+					 "	float x = float(texcoord.x)*0.5 + 0.5;\n"
+					 "	vec4 p = texture2D(s, vec2(x,0));\n"
+					 "	float v = p.x;\n"
+					 "	vec4 pl = texture2D(s, vec2(x-%f,0));\n"
+					 "	float vl = pl.x;\n"
+					 "	vec4 pr = texture2D(s, vec2(x+%f,0));\n"
+					 "	float vr = pr.x;\n"
+					 "	float y = texcoord.y * 0.5 + 0.5;\n"
+					 "	if( y < v && y<vl && y<vr){\n"
+					 "	  	gl_FragColor = vec4(1,0,1,1);\n"
+					 "	}else{\n"
+					 "	 	if(y>v && y>vl && y>vr){\n"
+					 "			gl_FragColor = vec4(0,0,0,1);\n"
+					 "		}else if(y>vl && y>vr){\n"
+					 "			gl_FragColor = vec4(0.5,0.0,0.5,1);\n"
+					 "		}else {\n"
+					 "			gl_FragColor = vec4(0.25,0.0,0.25,1);\n"
+					 "		}\n"
+					 "	}\n"
+					 "}\n",
+					 1.0/width,
+					 1.0/width
+		);
 	fs[sizeof(fs) - 1] = 0;
+	std::cout << "compile graph shader\n"; 
 	GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
+	std::cout << "link graph shader\n"; 
 	GLint prog = link_program(vs_s, fs_s);
 
 	glUseProgram(prog);
 
 	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
-	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, 0, -w_factor, 0 };
 	return prog;
 }
 
@@ -246,21 +230,21 @@ static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebuf
 	//glGenFramebuffers(1, renderFramebufferName);
 	//glBindFramebuffer(GL_FRAMEBUFFER, *renderFramebufferName);
 	//glGenTextures(1, renderedTexture);
-	glDisable(GL_DEPTH_TEST);
-	glGenFramebuffers(1, renderFramebufferName);
-	glGenTextures(1, renderedTexture);
-	glBindTexture(GL_TEXTURE_2D, renderedTexture[0]);
+//	glDisable(GL_DEPTH_TEST);
+//	glGenFramebuffers(1, renderFramebufferName);
+//	glGenTextures(1, renderedTexture);
+//	glBindTexture(GL_TEXTURE_2D, renderedTexture[0]);
 //	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB32F, 1024, 64, 0,GL_RGB, GL_FLOAT, 0);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+//	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	//glTexImage2D(GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT, null);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glBindFramebuffer(GL_FRAMEBUFFER, renderFramebufferName[0]);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderedTexture[0], 0);
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+//	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+//	glBindFramebuffer(GL_FRAMEBUFFER, renderFramebufferName[0]);
+//	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderedTexture[0], 0);
+//	glBindTexture(GL_TEXTURE_2D, 0);
+//	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// "Bind" the newly created texture : all future texture functions will modify this texture
 	//glBindTexture(GL_TEXTURE_2D, *renderedTexture);
@@ -280,8 +264,8 @@ static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebuf
 	//GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
 	//glDrawBuffers(1, DrawBuffers); // "1" is the size of DrawBuffers
 	// Always check that our framebuffer is ok
-	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-		std::cout << "FrameBuffer issue\n";
+//	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+//		std::cout << "FrameBuffer issue\n";
 //	std::cout << "RenderFrameBufferName First = " << renderFramebufferName << "\n";
 }
 
@@ -323,7 +307,7 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 	//static const float vertsShrink[] = { 
 		-1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0,// };
 //	static const float vertsGraph[] = { 
-		-1, -1, 1, -1, 1, 1, -1, 1 };
+		-1, -0.8, 1, -0.8, 1, 1, -1, 1 };
 
 	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 	glEnableVertexAttribArray(0);
@@ -526,7 +510,8 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		// This stuff has to be delayed until we know we're in the thread doing the display.
 		if (!eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_))
 			throw std::runtime_error("eglMakeCurrent failed");
-		progShrink=gl_setupShrinkData(info.width, info.height, width_, height_);
+//		progShrink=gl_setupShrinkData(info.width, info.height, width_, height_);
+		std::cout <<"makeBuffer\n";
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
@@ -582,7 +567,7 @@ void EglPreview::SetInfoText(const std::string &text)
 #define IMAGE_WIDTH 1920
 
 
-void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t height, uint32_t * output, uint32_t * maxVal, float slope){
+void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
 	*maxVal = 0;
 	for(uint16_t x=x0; x<x1; x++){
 		output[x]=0;
@@ -590,7 +575,7 @@ void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t h
 			int x2 = x+slope * y;
 			if (x2<0) x2=0;
 			if (x2>width-1) x2=width-1;
-			output[x] += data[(y*width+x+x2)];
+			output[x] += data[(y*stride+x+x2)];
 //			output[x] += data[4*(y*width+x+x2) + 1];
 //			output[x] += data[4*(y*width+x+x2) + 2];
 		}
@@ -609,6 +594,8 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	float max_dimension = std::max(w_factor, h_factor);
 	w_factor /= max_dimension;
 	h_factor /= max_dimension;
+
+	std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "\n";
 //	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 //	static const float vertsShrink[] = { -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
 //	static const float vertsGraph[] = { -1, -1, 1, -1, 1, 1, -1, 1 };
@@ -616,8 +603,8 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if (buffer.fd == -1){
 		makeBuffer(fd, span.size(), info, buffer);
 		if(first_time_){
-		setupRenderFrameBuffer(progShrink, info.width, &renderFramebufferName[0], &renderedTexture[0]);
-		graphData = new GLubyte[info.width*4+1];
+		setupRenderFrameBuffer(progGraph, info.width, &renderFramebufferName[0], &renderedTexture[0]);
+		graphData = new GLubyte[info.width*4*8+1];
 		first_time_=false;
 		}
 	}
@@ -642,10 +629,10 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 
 //	glReadPixels(0, 0, info.width, info.height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 //	Shrink(pixels, 0, info.width/4, info.width, info.height, shrunk, &max1,0 );
-	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, shrunk, &max1,0 );
-	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, shrunk, &max2,0 );
-	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, shrunk, &max3,0 );
-	std::thread t4(&Shrink, pixels, 3*info.width/4, info.width, info.width, info.height, shrunk, &max4,0 );
+	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, info.stride, shrunk, &max1,0 );
+	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, info.stride, shrunk, &max2,0 );
+	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, info.stride, shrunk, &max3,0 );
+	std::thread t4(&Shrink, pixels, 3*info.width/4, info.width, info.width, info.height, info.stride, shrunk, &max4,0 );
 	t1.join();
 	t2.join();
 	t3.join();
@@ -657,14 +644,13 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
 	float scale=(256.0*256-1)/max1;
 	// map pixel buffer
-	for(uint16_t i=0; i<info.width*4; i+=4){
-		uint16_t value = scale * shrunk[i];
+	for(uint16_t i=0; i<info.width*4*8; i+=4){
+		uint16_t value = scale * shrunk[i/8];
 		graphData[i] =   value / 256;
 		graphData[i+1] =  value % 256; 
 		graphData[i+2] =  0;//value/256;//value % 256; 
 		graphData[i+3] =  0;//value/256;//value % 256; 
 	}	
-	std::cout << (int)shrunk[0]<< "  " << (int)graphData[0] << "-" << (int)graphData[1] << "," << (int)graphData[2] << "-" << (int)graphData[3] << "\n";
 	
 	// ************************
 	// Draw Graph

@@ -344,7 +344,7 @@ static void gl_setup(int width, int height, int window_width, int window_height)
 int main(int argc, char *argv[])
 {
 
-
+	gpioInitialise();
 	gpioSetMode(PIN_SWITCH, PI_INPUT);
 	gpioSetPullUpDown(PIN_SWITCH, PI_PUD_UP);
 

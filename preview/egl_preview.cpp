@@ -575,7 +575,10 @@ void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t h
 			int x2 = x+slope * y;
 			if (x2<0) x2=0;
 			if (x2>width-1) x2=width-1;
-			output[x] += data[(y*stride+x+x2)]*3 + data[(int)((y+height)*stride+(x+x2)*0.5)]*0.781 + data[(int)((y+1.25*height)*stride+(x+x2)*0.5)]*1.63;
+//			std::cout << "y"<< y<<" h"<<height<<"s"<< (y*stride+x2) << "\n";
+			output[x] += data[(y*stride+x2)]*3
+				+ data[(int)((y/4+height)*stride+(x2)/4)]*0.781
+			       	+ data[(int)((y/4+1.25*height)*stride+(x2)/4)]*1.63;
 //			output[x] += data[4*(y*width+x+x2) + 1];
 //			output[x] += data[4*(y*width+x+x2) + 2];
 		}

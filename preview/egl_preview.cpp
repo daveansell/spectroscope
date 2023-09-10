@@ -674,6 +674,9 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	// ************************
 	// Draw Graph
 	// ************************
+	//
+	float shadowOpacity = (std::chrono::system_clock::now() - shadowTime) / std::chrono::milliseconds(10000); 
+	if(shadowOpacity<0) shadowOpacity=0;
 	glUseProgram(progGraph);
 //	glEnableVertexAttribArray(1);
 //	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, vertsGraph);
@@ -690,6 +693,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	glBindTexture(GL_TEXTURE_2D,renderedTexture[1]);
 	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
 	glUniform1i(glGetUniformLocation(progGraph,"shadow"), 2);
+	glUniform1f(glGetUniformLocation(progGraph,"shadowOpacity"), shadowOpacity);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

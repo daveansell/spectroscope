@@ -13,7 +13,7 @@
 #include <libcamera/base/span.h>
 
 #include "core/stream_info.hpp"
-
+#include <chrono>
 struct Options;
 
 class Preview
@@ -44,3 +44,7 @@ protected:
 };
 
 Preview *make_preview(Options const *options);
+extern bool doShadow;
+using namespace std::chrono;
+extern std::chrono::time_point <std::chrono::system_clock>shadowTime;
+

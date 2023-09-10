@@ -23,6 +23,7 @@
 
 #include "preview.hpp"
 
+
 class MyMainWindow : public QMainWindow
 {
 public:

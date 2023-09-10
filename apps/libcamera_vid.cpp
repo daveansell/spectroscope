@@ -113,7 +113,8 @@ static int get_colourspace_flags(std::string const &codec)
 }
 
 void freezeGraph(){
-
+	doShadow=true;
+	shadowTime = std::chrono::system_clock::now();
 }
 
 void calibrateMercury(){
@@ -344,7 +345,10 @@ static void gl_setup(int width, int height, int window_width, int window_height)
 int main(int argc, char *argv[])
 {
 
-	gpioInitialise();
+	if(gpioInitialise()<0){
+		std::cout<< "gpioInitialise() failure ";
+		exit(0);
+	}
 	gpioSetMode(PIN_SWITCH, PI_INPUT);
 	gpioSetPullUpDown(PIN_SWITCH, PI_PUD_UP);
 

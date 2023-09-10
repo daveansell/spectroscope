@@ -27,6 +27,9 @@
 #include <epoxy/gl.h>
 #include <iostream>
 #include <thread>
+bool doShadow = false;
+std::chrono::time_point <std::chrono::system_clock>shadowTime;
+
 class EglPreview : public Preview
 {
 public:
@@ -79,8 +82,9 @@ private:
 	GLint progShrink;
 	GLint progGraph;
 	GLuint renderFramebufferName[1];
-	GLuint renderedTexture[1];
+	GLuint renderedTexture[2];
 	uint32_t *shrunk;
+	GLubyte *shadowData;
 	GLubyte * graphData;
 	GLubyte* pixels;
 };
@@ -186,7 +190,9 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 	snprintf(fs, sizeof(fs),
 			 		 "precision mediump float;\n"
 					 "uniform sampler2D s;\n"
+					 "uniform sampler2D shadow;\n"
 					 "uniform float scale;\n"
+					 "uniform float shadowOpacity;\n"
 					 "varying vec2 texcoord;\n"
 					 "void main() {\n"
 					 "	float x = float(texcoord.x)*0.5 + 0.5;\n"
@@ -197,6 +203,7 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 					 "	vec4 pr = texture2D(s, vec2(x+%f,0));\n"
 					 "	float vr = pr.x;\n"
 					 "	float y = texcoord.y * 0.5 + 0.5;\n"
+// need to add shadow here
 					 "	if( y < v && y<vl && y<vr){\n"
 					 "	  	gl_FragColor = vec4(1,0,1,1);\n"
 					 "	}else{\n"
@@ -207,6 +214,9 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 					 "		}else {\n"
 					 "			gl_FragColor = vec4(0.25,0.0,0.25,1);\n"
 					 "		}\n"
+					 "	}\n"
+					 "	if(texture2D(shadow,vec2(x,0)).x>y){\n"
+					 "		gl_FragColor += vec4(0,0,0.2,0);\n"
 					 "	}\n"
 					 "}\n",
 					 1.0/width,
@@ -515,6 +525,7 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
+		shadowData = new GLubyte[info.width*4*8+1];
        		pixels = new GLubyte[info.width * info.height * 4+20];
 //	first_time_ = false;
 	}
@@ -632,6 +643,8 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 
 //	glReadPixels(0, 0, info.width, info.height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 //	Shrink(pixels, 0, info.width/4, info.width, info.height, shrunk, &max1,0 );
+
+//	Reduce the data using 4threads to speed it up
 	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, info.stride, shrunk, &max1,0 );
 	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, info.stride, shrunk, &max2,0 );
 	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, info.stride, shrunk, &max3,0 );
@@ -647,14 +660,17 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
 	float scale=(256.0*256-1)/max1;
 	// map pixel buffer
-	for(uint16_t i=0; i<info.width*4*8; i+=4){
-		uint16_t value = scale * shrunk[i/8];
+	for(uint16_t i=0; i<info.width*4*4; i+=4){
+		uint16_t value = scale * shrunk[i/4];
 		graphData[i] =   value / 256;
 		graphData[i+1] =  value % 256; 
 		graphData[i+2] =  0;//value/256;//value % 256; 
 		graphData[i+3] =  0;//value/256;//value % 256; 
 	}	
-	
+	if(doShadow){
+		std::memcpy(graphData, shadowData, info.width*4*8);
+		doShadow=false;
+	}	
 	// ************************
 	// Draw Graph
 	// ************************
@@ -666,8 +682,14 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		std::cout << "FrameBuffer Graph issue\n";
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D,renderedTexture[0]);
+
 	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, graphData);
 	glUniform1i(glGetUniformLocation(progGraph,"s"), 1);
+
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D,renderedTexture[1]);
+	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
+	glUniform1i(glGetUniformLocation(progGraph,"shadow"), 2);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

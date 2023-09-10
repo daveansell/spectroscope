@@ -21,7 +21,8 @@ libcamera_vid = executable('libcamera-vid', files('libcamera_vid.cpp'),
                            include_directories : include_directories('..', '../include'),
                            dependencies: [libcamera_dep, boost_dep, gluDep, glewDep,  sdlDep, xDep, epoxyDep],
                            link_with : [libcamera_app],
-                           install : true)
+                           install : true,
+			   link_args: ['-lpigpio'])
 
 libcamera_hello = executable('libcamera-hello', files('libcamera_hello.cpp'),
                              include_directories : include_directories('..'),

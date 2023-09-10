@@ -21,9 +21,19 @@
 #include <err.h>
 #include <X11/Xlib.h>
 
+#include <pigpio.h>
 #include "../preview/preview.hpp"
 
 #define IMAGE_WIDTH 1920
+#define PIN_SWITCH 21
+#define DEBOUNCE 100
+#define BETWEEN_PRESSES 1000
+
+#include <chrono>
+int lastSwitchState=1;
+auto lastSwitchTime= std::chrono::system_clock::now();//duration_cast < milliseconds> ( chrono.system_clock::now().time_since_epoch() );
+int numPresses = 0;
+
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
@@ -102,7 +112,17 @@ static int get_colourspace_flags(std::string const &codec)
 		return LibcameraEncoder::FLAG_VIDEO_NONE;
 }
 
+void freezeGraph(){
 
+}
+
+void calibrateMercury(){
+
+}
+
+void calibrateIncandescent(){
+
+}
 
 // The main even loop for the application.
 
@@ -196,6 +216,29 @@ static void event_loop(LibcameraEncoder &app)
 
 		app.EncodeBuffer(completed_request, app.VideoStream());
 		app.ShowPreview(completed_request, app.VideoStream());
+		int switchState = gpioRead(PIN_SWITCH);
+		if(switchState != lastSwitchState){
+			auto timeNow = std::chrono::system_clock::now();//duration_cast < milliseconds> ( chrono.system_clock::now().time_since_epoch() );
+			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timeNow-lastSwitchTime);
+			if(duration < std::chrono::milliseconds(DEBOUNCE)){
+			}else if(duration < std::chrono::milliseconds(BETWEEN_PRESSES)){
+				numPresses++;
+				if(numPresses==1){
+					freezeGraph();
+				}
+			}else{
+				numPresses =0;
+				switch(numPresses){
+					case 3:
+						calibrateMercury();
+						break;
+					case 4:
+						calibrateIncandescent();
+						break;
+				}
+			}
+		}
+		lastSwitchState = switchState;
 		if(!prog){
 			gl_setup(1920,1080,1920,1080);
 		}
@@ -302,7 +345,8 @@ int main(int argc, char *argv[])
 {
 
 
-
+	gpioSetMode(PIN_SWITCH, PI_INPUT);
+	gpioSetPullUpDown(PIN_SWITCH, PI_PUD_UP);
 
 
 	try

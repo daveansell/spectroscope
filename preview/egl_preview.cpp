@@ -62,6 +62,7 @@ private:
 	};
 	void makeWindow(char const *name);
 	void makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer &buffer);
+	uint32_t ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk,float *slope );
 	::Display *display_;
 	EGLDisplay egl_display_;
 	Window window_;
@@ -87,6 +88,7 @@ private:
 	GLubyte *shadowData;
 	GLubyte * graphData;
 	GLubyte* pixels;
+	float slope;
 };
 
 static GLint compile_shader(GLenum target, const char *source)
@@ -327,6 +329,7 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 
 EglPreview::EglPreview(Options const *options) : Preview(options), last_fd_(-1), first_time_(true)
 {
+	slope= 0;
 	display_ = XOpenDisplay(NULL);
 	if (!display_)
 		throw std::runtime_error("Couldn't open X display");
@@ -601,6 +604,27 @@ void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t h
 	
 }
 
+uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk, float *slope2       ){
+        uint32_t max1, max2, max3, max4;
+        //libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
+
+//      Reduce the data using 4threads to speed it up
+        std::thread t1(&Shrink, pixels, 0, info->width/4, info->width, info->height, info->stride, shrunk, &max1,*slope2 );
+        std::thread t2(&Shrink, pixels, info->width/4, info->width/2, info->width, info->height, info->stride, shrunk, &max2, *slope2 );
+        std::thread t3(&Shrink, pixels, info->width/2, 3*info->width/4, info->width, info->height, info->stride, shrunk, &max3,*slope2 );
+        std::thread t4(&Shrink, pixels, 3*info->width/4, info->width, info->width, info->height, info->stride, shrunk, &max4,*slope2 );
+        t1.join();
+        t2.join();
+        t3.join();
+        t4.join();
+        if(max2>max1) max1=max2;
+        if(max3>max1) max1=max3;
+        if(max4>max1) max1=max4;
+        std::cout << "info.width=" << info->width << " info.height=" << info->height << " info.stride="<< info->stride << "max="<<max1<<"\n";
+        return max1;
+}
+
+
 void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &info)
 {
 	float w_factor = info.width / (float)width_;
@@ -637,7 +661,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
 	//std::cout << "RenderFrameBufferName = " << renderFramebufferName << "\n";
-	uint32_t max1, max2, max3, max4;
+	uint32_t max1;//, max2, max3, max4;
 	//libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
         pixels = (GLubyte *)span.data();
 
@@ -645,6 +669,8 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	Shrink(pixels, 0, info.width/4, info.width, info.height, shrunk, &max1,0 );
 
 //	Reduce the data using 4threads to speed it up
+	max1=ShrinkData(pixels, &info, shrunk, &slope );
+/*
 	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, info.stride, shrunk, &max1,0 );
 	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, info.stride, shrunk, &max2,0 );
 	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, info.stride, shrunk, &max3,0 );
@@ -656,7 +682,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if(max2>max1) max1=max2;
 	if(max3>max1) max1=max3;
 	if(max4>max1) max1=max4;
-
+*/
 //	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
 	float scale=(256.0*256-1)/max1;
 	// map pixel buffer

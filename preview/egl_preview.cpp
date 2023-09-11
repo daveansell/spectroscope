@@ -28,6 +28,7 @@
 #include <iostream>
 #include <thread>
 bool doShadow = false;
+bool doSlope = false;
 std::chrono::time_point <std::chrono::system_clock>shadowTime;
 
 class EglPreview : public Preview
@@ -580,6 +581,17 @@ void EglPreview::SetInfoText(const std::string &text)
 
 #define IMAGE_WIDTH 1920
 
+		uint32_t differentiate(uint32_t* shrunk,int width){
+			uint32_t d = 0;
+			for(int x=0; x<width-1; x++){
+				if(shrunk[x]>shrunk[x+1]){
+					d+= shrunk[x]-shrunk[x+1];
+				}else{
+					d+= shrunk[x+1]-shrunk[x];
+				}
+			}
+			return d;
+		}
 
 void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
 	*maxVal = 0;
@@ -670,7 +682,32 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 
 //	Reduce the data using 4threads to speed it up
 	max1=ShrinkData(pixels, &info, shrunk, &slope );
-/*
+	// optimise slope by maximising spikyness
+	if(doSlope){
+		float oldslope = slope;
+		uint32_t lastd = differentiate(shrunk, info.width);
+		int direction = 1;
+		float step = 0.01;
+		int count=0;
+		while(count<20){
+			max1=ShrinkData(pixels, &info, shrunk, &slope );
+			uint32_t d = differentiate(shrunk,info.width);
+			if(d-lastd > 0){
+				direction = -direction;
+				step *=0.5;
+			}
+			if(step<0.0001){
+				break;
+			}
+			slope+=step*direction;
+			count++;
+		}
+		if(count>=20){
+			slope=oldslope;
+		}
+		doSlope=false;
+	}
+	/*
 	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, info.stride, shrunk, &max1,0 );
 	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, info.stride, shrunk, &max2,0 );
 	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, info.stride, shrunk, &max3,0 );

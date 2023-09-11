@@ -125,6 +125,10 @@ void calibrateIncandescent(){
 
 }
 
+void calibrateSlope(){
+	doSlope=true;
+}
+
 // The main even loop for the application.
 
 static void event_loop(LibcameraEncoder &app)
@@ -235,6 +239,9 @@ static void event_loop(LibcameraEncoder &app)
 						break;
 					case 4:
 						calibrateIncandescent();
+						break;
+					case 5:
+						calibrateSlope();
 						break;
 				}
 			}

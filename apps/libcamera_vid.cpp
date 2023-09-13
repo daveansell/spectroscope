@@ -20,7 +20,8 @@
 
 #include <err.h>
 #include <X11/Xlib.h>
-
+#include <fstream>
+#include <string>
 #include <pigpio.h>
 #include "../preview/preview.hpp"
 
@@ -111,6 +112,7 @@ static int get_colourspace_flags(std::string const &codec)
 	else
 		return LibcameraEncoder::FLAG_VIDEO_NONE;
 }
+
 
 void freezeGraph(){
 	doShadow=true;

@@ -29,6 +29,7 @@
 #include <thread>
 bool doShadow = false;
 bool doSlope = false;
+char calFileName[] = "cal.txt";
 std::chrono::time_point <std::chrono::system_clock>shadowTime;
 
 class EglPreview : public Preview
@@ -64,6 +65,8 @@ private:
 	void makeWindow(char const *name);
 	void makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer &buffer);
 	uint32_t ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk,float *slope );
+	void readCal();
+	void saveCal();
 	::Display *display_;
 	EGLDisplay egl_display_;
 	Window window_;
@@ -91,6 +94,45 @@ private:
 	GLubyte* pixels;
 	float slope;
 };
+
+void EglPreview::saveCal(){
+	std::ofstream calfile;
+	calfile.open(calFileName);
+
+	calfile << "Slope\n" << slope << "\n";
+
+	calfile.close();
+}
+
+void EglPreview::findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks){
+	float smooth[]={-1.0,-2.0, 2.0, 1.0};
+	int numPeaks =0;
+	for(int x=0; x<width-7;x++){
+		float d=0;
+		for(int i=0;i<4;i++){
+			d+=smooth[i]*data[x+i];
+		}
+		if(x>0 and d*lastd<0){
+			peaks[numPeaks]=x+2;
+			numPeaks++;
+		}
+		lastd=d;
+	}
+}
+void EglPreview::parsePeaks(uint16_t *data, uint16_t *peaks){
+
+
+}
+
+void EglPreview::readCal(){
+	std::ifstream calfile;
+	calfile.open(calFileName);
+		std::string line;
+		std::getline(calfile, line);
+		std::getline(calfile, line);
+		slope = atof(line.c_str());
+	calfile.close();
+}
 
 static GLint compile_shader(GLenum target, const char *source)
 {
@@ -632,7 +674,7 @@ uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_
         if(max2>max1) max1=max2;
         if(max3>max1) max1=max3;
         if(max4>max1) max1=max4;
-        std::cout << "info.width=" << info->width << " info.height=" << info->height << " info.stride="<< info->stride << "max="<<max1<<"\n";
+  //      std::cout << "info.width=" << info->width << " info.height=" << info->height << " info.stride="<< info->stride << "max="<<max1<<"\n";
         return max1;
 }
 
@@ -645,7 +687,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	w_factor /= max_dimension;
 	h_factor /= max_dimension;
 
-	std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "\n";
+//	std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "\n";
 //	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 //	static const float vertsShrink[] = { -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
 //	static const float vertsGraph[] = { -1, -1, 1, -1, 1, 1, -1, 1 };
@@ -706,6 +748,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 			slope=oldslope;
 		}
 		doSlope=false;
+		std::cout << "slope=" << slope << "\n"; 
 	}
 	/*
 	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, info.stride, shrunk, &max1,0 );

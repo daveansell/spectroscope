@@ -27,6 +27,10 @@
 #include <epoxy/gl.h>
 #include <iostream>
 #include <thread>
+#define STB_IMAGE_IMPLEMENTATION
+
+#include <stb/stb_image.h>
+
 bool doShadow = false;
 bool doSlope = false;
 char calFileName[] = "cal.txt";
@@ -65,6 +69,8 @@ private:
 	void makeWindow(char const *name);
 	void makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer &buffer);
 	uint32_t ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk,float *slope );
+        void findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks);
+        void parsePeaks(uint16_t *data, uint16_t *peaks);
 	void readCal();
 	void saveCal();
 	::Display *display_;
@@ -107,6 +113,7 @@ void EglPreview::saveCal(){
 void EglPreview::findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks){
 	float smooth[]={-1.0,-2.0, 2.0, 1.0};
 	int numPeaks =0;
+	float lastd = 0;
 	for(int x=0; x<width-7;x++){
 		float d=0;
 		for(int i=0;i<4;i++){

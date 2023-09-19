@@ -99,6 +99,7 @@ private:
 	GLubyte * graphData;
 	GLubyte* pixels;
 	float slope;
+	GLint progText;
 };
 
 void EglPreview::saveCal(){
@@ -219,23 +220,6 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 	GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
 	char fs[1024];
 
-	/*
-					 "	if( y < x){\n"
-					 "		gl_FragColor = vec4(1.0,0.0,0.0,1.0);\n"
-					 "	}else if( y-1.0 < x){\n"
-					 "		if( y < 0.5){\n"
-					 "			gl_FragColor = vec4(1.0,1.0,0.0,1.0);\n"
-					 "		} else if( y > 0.9){\n"
-					 "			gl_FragColor = vec4(1.0,1.0,1.0,1.0);\n"
-					 "		}else{\n"
-					 "			gl_FragColor = vec4(0.0,0.0,1.0,1.0);\n"
-					 "		}\n"
-					 "	}else{\n"
-					 "		gl_FragColor = vec4(0.0,0.0,0.0,0.0);\n"
-					 "	}\n"
-
-	 
-*/
 	/*
 	 * x and y varying from 0 to 1 
 	 */
@@ -376,6 +360,83 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, vertsVid);
 	return prog;
 }
+
+static GLint gl_text_setup(){
+//      char vs[256];
+
+        const char *vs = "attribute vec4 pos;\n"
+                         "attribute float imageNo;\n"
+                         "attribute float scale;\n"
+                         "varying vec2 texcoord;\n"
+                         "\n"
+                         "void main() {\n"
+                         "  gl_Position = pos;\n"
+                         "  texcoord.x = pos.x;\n"
+                         "  texcoord.y = (pos.y + imageNo)*scale;\n"
+                         "}\n";
+
+        GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
+        const char *fs =                 "precision mediump float;\n"
+                                         "uniform sampler2D s;\n"
+                                         "varying vec2 texcoord;\n"
+                                         "void main() {\n"
+                                         "  vec4 t = texture2D(s, texcoord);\n"
+                                         "  gl_FragColor = vec4(t.x*t.w, t.y*t.w, t.z*t.w,1.0);\n"
+                                         "}\n";
+        GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
+        GLint prog = link_program(vs_s, fs_s);
+        glUseProgram(prog);
+        glActiveTexture(GL_TEXTURE3);
+        unsigned int texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
+        // set the texture wrapping parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);       // set texture wrapping to GL_REPEAT (default wrapping method)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        // set texture filtering parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        static const float verts[] = { 
+                -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
+        int width,height,nrChannels;
+        unsigned char *data = stbi_load("wavelengths.png", &width, &height, &nrChannels, 0);
+        if (data){
+                if(nrChannels==4){
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+                }else{
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+                }
+                glGenerateMipmap(GL_TEXTURE_2D);
+        }
+        else
+        {
+                std::cout << "Failed to load texture" << std::endl;
+        }
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts);
+        stbi_image_free(data);
+        return prog;
+}
+
+static GLint draw_text(int imageNo,int x, int y, int width, int height, float scale, GLint prog){
+      glUseProgram(prog);
+//      static const float vertsText[] = { 0.0, 0,0{ x, y, x+width*scale, y, x+width*scale, y+height*scale, x, y+height*scale};
+
+        glActiveTexture(GL_TEXTURE3);
+        //glBindTexture(GL_TEXTURE_2D,renderedTexture[1]);
+        //glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
+        glUniform1i(glGetUniformLocation(prog,"imageNo"), imageNo);
+        glUniform1f(glGetUniformLocation(prog,"scale"), 1.0);
+        glUniform1i(glGetUniformLocation(prog,"s"), 1);
+        // Give an empty image to OpenGL ( the last "0" )
+        //glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
+        glViewport( x,y,width*scale,height*scale);
+        //glClear(GL_COLOR_BUFFER_BIT);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        return prog;
+}
+
 
 EglPreview::EglPreview(Options const *options) : Preview(options), last_fd_(-1), first_time_(true)
 {
@@ -575,6 +636,7 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 			throw std::runtime_error("eglMakeCurrent failed");
 //		progShrink=gl_setupShrinkData(info.width, info.height, width_, height_);
 		std::cout <<"makeBuffer\n";
+		progText = gl_text_setup();
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
@@ -823,7 +885,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_BYTE, 0);
 //	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
   //  	glEnableVertexAttribArray(0);
-
+	draw_text(0, 100, 1000, 100, 30,1.0, progText);
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)
 		done_callback_(last_fd_);

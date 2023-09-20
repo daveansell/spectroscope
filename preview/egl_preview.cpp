@@ -100,6 +100,7 @@ private:
 	GLubyte* pixels;
 	float slope;
 	GLint progText;
+	GLuint textTexture;
 };
 
 void EglPreview::saveCal(){
@@ -361,7 +362,7 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 	return prog;
 }
 
-static GLint gl_text_setup(){
+static GLint gl_text_setup(GLuint *texture){
 //      char vs[256];
 
         const char *vs = "attribute vec4 pos;\n"
@@ -387,9 +388,9 @@ static GLint gl_text_setup(){
         GLint prog = link_program(vs_s, fs_s);
         glUseProgram(prog);
         glActiveTexture(GL_TEXTURE3);
-        unsigned int texture;
-        glGenTextures(1, &texture);
-        glBindTexture(GL_TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
+//        unsigned int texture;
+        glGenTextures(1, texture);
+        glBindTexture(GL_TEXTURE_2D, *texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
         // set the texture wrapping parameters
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);       // set texture wrapping to GL_REPEAT (default wrapping method)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -418,16 +419,16 @@ static GLint gl_text_setup(){
         return prog;
 }
 
-static GLint draw_text(int imageNo,int x, int y, int width, int height, float scale, GLint prog){
+static GLint draw_text(int imageNo,int x, int y, int width, int height, float scale, GLint prog, GLuint *texture){
       glUseProgram(prog);
 //      static const float vertsText[] = { 0.0, 0,0{ x, y, x+width*scale, y, x+width*scale, y+height*scale, x, y+height*scale};
-
+	std::cout << "draw_text texture=" << *texture << " prog="<<prog<<" "<< GL_TEXTURE3 <<"\n";
         glActiveTexture(GL_TEXTURE3);
-        //glBindTexture(GL_TEXTURE_2D,renderedTexture[1]);
+        glBindTexture(GL_TEXTURE_2D,*texture);
         //glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
         glUniform1i(glGetUniformLocation(prog,"imageNo"), imageNo);
-        glUniform1f(glGetUniformLocation(prog,"scale"), 1.0);
-        glUniform1i(glGetUniformLocation(prog,"s"), 1);
+        glUniform1f(glGetUniformLocation(prog,"scale"), 1.0/8);
+        glUniform1i(glGetUniformLocation(prog,"s"), 3);
         // Give an empty image to OpenGL ( the last "0" )
         //glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
         glViewport( x,y,width*scale,height*scale);
@@ -636,7 +637,7 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 			throw std::runtime_error("eglMakeCurrent failed");
 //		progShrink=gl_setupShrinkData(info.width, info.height, width_, height_);
 		std::cout <<"makeBuffer\n";
-		progText = gl_text_setup();
+		progText = gl_text_setup(&textTexture);
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
@@ -885,7 +886,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_BYTE, 0);
 //	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
   //  	glEnableVertexAttribArray(0);
-	draw_text(0, 100, 1000, 100, 30,1.0, progText);
+	draw_text(0, width_/8, height_*0.8, 100, 30,1.0, progText, &textTexture);
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)
 		done_callback_(last_fd_);

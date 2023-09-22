@@ -31,7 +31,7 @@
 
 #include <stb/stb_image.h>
 
-bool doShadow = false;
+bool doShadow = true;
 bool doSlope = false;
 char calFileName[] = "cal.txt";
 std::chrono::time_point <std::chrono::system_clock>shadowTime;
@@ -242,18 +242,18 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 					 "	float y = texcoord.y * 0.5 + 0.5;\n"
 // need to add shadow here
 					 "	if( y < v && y<vl && y<vr){\n"
-					 "	  	gl_FragColor = vec4(1,0,1,1);\n"
+					 "	  	gl_FragColor = vec4(1,0,0,1);\n"
 					 "	}else{\n"
 					 "	 	if(y>v && y>vl && y>vr){\n"
 					 "			gl_FragColor = vec4(0,0,0,1);\n"
 					 "		}else if(y>vl && y>vr){\n"
-					 "			gl_FragColor = vec4(0.5,0.0,0.5,1);\n"
+					 "			gl_FragColor = vec4(0.5,0.0,0.0,1);\n"
 					 "		}else {\n"
-					 "			gl_FragColor = vec4(0.25,0.0,0.25,1);\n"
+					 "			gl_FragColor = vec4(0.25,0.0,0.0,1);\n"
 					 "		}\n"
 					 "	}\n"
 					 "	if(texture2D(shadow,vec2(x,0)).x>y){\n"
-					 "		gl_FragColor += vec4(0,0,0.2,0);\n"
+					 "		gl_FragColor += vec4(shadowOpacity,shadowOpacity,shadowOpacity,0);\n"
 					 "	}\n"
 					 "}\n",
 					 1.0/width,
@@ -422,7 +422,7 @@ static GLint gl_text_setup(GLuint *texture){
 static GLint draw_text(int imageNo,int x, int y, int width, int height, float scale, GLint prog, GLuint *texture){
       glUseProgram(prog);
 //      static const float vertsText[] = { 0.0, 0,0{ x, y, x+width*scale, y, x+width*scale, y+height*scale, x, y+height*scale};
-	std::cout << "draw_text texture=" << *texture << " prog="<<prog<<" "<< GL_TEXTURE3 <<"\n";
+//	std::cout << "draw_text texture=" << *texture << " prog="<<prog<<" "<< GL_TEXTURE3 <<"\n";
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D,*texture);
         //glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
@@ -844,15 +844,26 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		graphData[i+3] =  0;//value/256;//value % 256; 
 	}	
 	if(doShadow){
-		std::memcpy(graphData, shadowData, info.width*4*8);
+		std::cout << "Do shadow\n"; 
+//std::memcpy(graphData, shadowData, info.width*4*8);
+		for(uint16_t i=0;i<info.width*4*4;i++){
+			shadowData[i]=graphData[i];
+			std::cout << (int)shadowData[i] <<",";
+		}
+		std::cout << "\n";
 		doShadow=false;
 	}	
 	// ************************
 	// Draw Graph
 	// ************************
 	//
-	float shadowOpacity = (std::chrono::system_clock::now() - shadowTime) / std::chrono::milliseconds(10000); 
-	if(shadowOpacity<0) shadowOpacity=0;
+	float shadowOpacity = 1.0-((float)(std::chrono::system_clock::now() - shadowTime).count()) / 10000000000;
+	std::cout << ((float)(std::chrono::system_clock::now()-shadowTime).count())/1000000000.0<< "-";
+        std::cout << "shadowOpacity=" << shadowOpacity << " ";
+	if(shadowOpacity<0) shadowOpacity=0.0;
+	if(shadowOpacity>1.0) shadowOpacity=1.0;
+	shadowOpacity*=0.5;
+        std::cout << "shadowOpacity=" << shadowOpacity << "\n";
 	glUseProgram(progGraph);
 //	glEnableVertexAttribArray(1);
 //	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, vertsGraph);

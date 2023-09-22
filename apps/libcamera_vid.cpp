@@ -115,6 +115,7 @@ static int get_colourspace_flags(std::string const &codec)
 
 
 void freezeGraph(){
+	std::cout<< "freezeGraph()\n";
 	doShadow=true;
 	shadowTime = std::chrono::system_clock::now();
 }
@@ -224,29 +225,44 @@ static void event_loop(LibcameraEncoder &app)
 		app.EncodeBuffer(completed_request, app.VideoStream());
 		app.ShowPreview(completed_request, app.VideoStream());
 		int switchState = gpioRead(PIN_SWITCH);
-		if(switchState != lastSwitchState){
-			auto timeNow = std::chrono::system_clock::now();//duration_cast < milliseconds> ( chrono.system_clock::now().time_since_epoch() );
-			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timeNow-lastSwitchTime);
+		auto timeNow = std::chrono::system_clock::now();//duration_cast < milliseconds> ( chrono.system_clock::now().time_since_epoch() );
+		auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timeNow-lastSwitchTime);
+		if(switchState != lastSwitchState && switchState==0){
+			std::cout << "S";
+	                std::cout << switchState <<"_";
+			std::cout << duration.count() << " " << BETWEEN_PRESSES<< " \n";
 			if(duration < std::chrono::milliseconds(DEBOUNCE)){
-			}else if(duration < std::chrono::milliseconds(BETWEEN_PRESSES)){
+				std::cout << "DEBOUNCE";
+			}else if(switchState ==0 && numPresses==0){
 				numPresses++;
-				if(numPresses==1){
-					freezeGraph();
-				}
+				std::cout << "press_"<< numPresses<< " ";
+				freezeGraph();
+				lastSwitchTime = timeNow;
+			}else if(switchState ==0 && duration < std::chrono::milliseconds(BETWEEN_PRESSES)){
+				numPresses++;
+				std::cout << "press_"<< numPresses<< " ";
+				lastSwitchTime = timeNow;
 			}else{
-				numPresses =0;
-				switch(numPresses){
-					case 3:
-						calibrateMercury();
-						break;
-					case 4:
-						calibrateIncandescent();
-						break;
-					case 5:
-						calibrateSlope();
-						break;
-				}
+				lastSwitchTime = timeNow;
+				std::cout<< "Else";
 			}
+		}else if(switchState==1 && (duration > std::chrono::milliseconds(BETWEEN_PRESSES) && numPresses>0)){
+			std::cout << "Pressed_"<< numPresses;
+			switch(numPresses){
+				case 3:
+					calibrateMercury();
+					break;
+				case 4:
+					calibrateIncandescent();
+				break;
+				case 5:
+					calibrateSlope();
+					break;
+			}
+			numPresses =0;
+			lastSwitchTime = timeNow;
+		}else{
+
 		}
 		lastSwitchState = switchState;
 		if(!prog){

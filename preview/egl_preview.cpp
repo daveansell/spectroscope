@@ -35,7 +35,8 @@ bool doShadow = true;
 bool doSlope = false;
 char calFileName[] = "cal.txt";
 std::chrono::time_point <std::chrono::system_clock>shadowTime;
-
+int labelPositions[]={ 100,250,400,550,700,850,1000,1150};
+int numLabels = 8;
 class EglPreview : public Preview
 {
 public:
@@ -335,17 +336,14 @@ static GLint gl_text_setup(GLuint *texture){
 //      char vs[256];
 
         const char *vs = "attribute vec4 pos;\n"
-                         "attribute float imageNo;\n"
-                         "attribute float scale;\n"
+                         "uniform float imageNo;\n"
+                         "uniform float scale;\n"
                          "varying vec2 texcoord;\n"
                          "\n"
                          "void main() {\n"
                          "  gl_Position = pos;\n"
                          "  texcoord.x =pos.x*1.3;\n"
-                         "  texcoord.y =-(pos.y-0.75)*0.0625;\n"
-                         //"  texcoord.y =-(pos.y + imageNo)*scale;\n"
-                         //"  texcoord.y = -(pos.y + imageNo)*scale;\n"
-                         //"  texcoord.y = -pos.y*0.0625;\n"
+                         "  texcoord.y =-(pos.y-0.75-imageNo)*0.0625;\n"
                          "}\n";
 
         GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
@@ -399,8 +397,9 @@ static GLint draw_text(int imageNo,int x, int y, int width, int height, float sc
 //      static const float vertsText[] = { 0.0, 0,0{ x, y, x+width*scale, y, x+width*scale, y+height*scale, x, y+height*scale};
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D,*texture);
-        glUniform1i(glGetUniformLocation(prog,"imageNo"), imageNo);
+        glUniform1f(glGetUniformLocation(prog,"imageNo"), (float)imageNo*2);
         glUniform1f(glGetUniformLocation(prog,"scale"), 1.0/8.0*2.0);
+	// we have put this texture into GL_TEXTURE3
         glUniform1i(glGetUniformLocation(prog,"s"), 3);
         // Give an empty image to OpenGL ( the last "0" )
         //glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
@@ -870,7 +869,9 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_BYTE, 0);
 //	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
   //  	glEnableVertexAttribArray(0);
-	draw_text(0, width_/8, 15, 200, 30,1.0, progText, &textTexture);
+  	for(int i=0; i<numLabels;i++){
+		draw_text(i, labelPositions[i], 15, 200, 30,1.0, progText, &textTexture);
+	}
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)
 		done_callback_(last_fd_);

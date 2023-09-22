@@ -274,27 +274,8 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebufferName, GLuint *renderedTexture){
 
 	glUseProgram(prog);
-	//glGenFramebuffers(1, renderFramebufferName);
-	//glBindFramebuffer(GL_FRAMEBUFFER, *renderFramebufferName);
-	//glGenTextures(1, renderedTexture);
-//	glDisable(GL_DEPTH_TEST);
-//	glGenFramebuffers(1, renderFramebufferName);
-//	glGenTextures(1, renderedTexture);
-//	glBindTexture(GL_TEXTURE_2D, renderedTexture[0]);
-//	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB32F, 1024, 64, 0,GL_RGB, GL_FLOAT, 0);
-//	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT, null);
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-//	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-//	glBindFramebuffer(GL_FRAMEBUFFER, renderFramebufferName[0]);
-//	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderedTexture[0], 0);
-//	glBindTexture(GL_TEXTURE_2D, 0);
-//	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// "Bind" the newly created texture : all future texture functions will modify this texture
-	//glBindTexture(GL_TEXTURE_2D, *renderedTexture);
 	glActiveTexture(GL_TEXTURE1);
 	// Give an empty image to OpenGL ( the last "0" )
 	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, width, 2, 1,GL_RGB, GL_UNSIGNED_BYTE, 0);
@@ -304,16 +285,7 @@ static void setupRenderFrameBuffer(GLint prog, int width, GLuint *renderFramebuf
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	// Set "renderedTexture" as our colour attachement #0
-	//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, *renderedTexture, 0);
 
-	// Set the list of draw buffers.
-	//GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
-	//glDrawBuffers(1, DrawBuffers); // "1" is the size of DrawBuffers
-	// Always check that our framebuffer is ok
-//	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-//		std::cout << "FrameBuffer issue\n";
-//	std::cout << "RenderFrameBufferName First = " << renderFramebufferName << "\n";
 }
 
 
@@ -351,12 +323,9 @@ static GLint gl_setup(int width, int height, int window_width, int window_height
 
 	glUseProgram(prog);
 	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor,
-	//static const float vertsShrink[] = { 
-		-1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0,// };
-//	static const float vertsGraph[] = { 
-		-1, -0.8, 1, -0.8, 1, 1, -1, 1 };
+               -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0,// };
+               -1, -0.8, 1, -0.8, 1, 1, -1, 1 };
 
-	//static const float verts[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, vertsVid);
 	return prog;
@@ -372,8 +341,11 @@ static GLint gl_text_setup(GLuint *texture){
                          "\n"
                          "void main() {\n"
                          "  gl_Position = pos;\n"
-                         "  texcoord.x = pos.x;\n"
-                         "  texcoord.y = (pos.y + imageNo)*scale;\n"
+                         "  texcoord.x =pos.x*1.3;\n"
+                         "  texcoord.y =-(pos.y-0.75)*0.0625;\n"
+                         //"  texcoord.y =-(pos.y + imageNo)*scale;\n"
+                         //"  texcoord.y = -(pos.y + imageNo)*scale;\n"
+                         //"  texcoord.y = -pos.y*0.0625;\n"
                          "}\n";
 
         GLint vs_s = compile_shader(GL_VERTEX_SHADER, vs);
@@ -381,8 +353,11 @@ static GLint gl_text_setup(GLuint *texture){
                                          "uniform sampler2D s;\n"
                                          "varying vec2 texcoord;\n"
                                          "void main() {\n"
-                                         "  vec4 t = texture2D(s, texcoord);\n"
-                                         "  gl_FragColor = vec4(t.x*t.w, t.y*t.w, t.z*t.w,1.0);\n"
+                                         "  vec2 tc = vec2(texcoord.x+0.5,texcoord.y);\n"
+                                         "  vec4 t = texture2D(s, tc);\n"
+                                         //"  gl_FragColor = vec4(t.x, t.y*t.w, t.z*t.w,1.0);\n"
+                                         "  gl_FragColor = vec4(t.x, t.y, t.z,1.0);\n"
+                                        // "  gl_FragColor = vec4(1.0,1.0,1.0,1.0);\n"
                                          "}\n";
         GLint fs_s = compile_shader(GL_FRAGMENT_SHADER, fs);
         GLint prog = link_program(vs_s, fs_s);
@@ -422,12 +397,10 @@ static GLint gl_text_setup(GLuint *texture){
 static GLint draw_text(int imageNo,int x, int y, int width, int height, float scale, GLint prog, GLuint *texture){
       glUseProgram(prog);
 //      static const float vertsText[] = { 0.0, 0,0{ x, y, x+width*scale, y, x+width*scale, y+height*scale, x, y+height*scale};
-//	std::cout << "draw_text texture=" << *texture << " prog="<<prog<<" "<< GL_TEXTURE3 <<"\n";
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D,*texture);
-        //glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
         glUniform1i(glGetUniformLocation(prog,"imageNo"), imageNo);
-        glUniform1f(glGetUniformLocation(prog,"scale"), 1.0/8);
+        glUniform1f(glGetUniformLocation(prog,"scale"), 1.0/8.0*2.0);
         glUniform1i(glGetUniformLocation(prog,"s"), 3);
         // Give an empty image to OpenGL ( the last "0" )
         //glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
@@ -897,7 +870,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glDrawElements(GL_LINE_LOOP, info.width*2+4, GL_UNSIGNED_BYTE, 0);
 //	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
   //  	glEnableVertexAttribArray(0);
-	draw_text(0, width_/8, height_*0.8, 100, 30,1.0, progText, &textTexture);
+	draw_text(0, width_/8, 15, 200, 30,1.0, progText, &textTexture);
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)
 		done_callback_(last_fd_);

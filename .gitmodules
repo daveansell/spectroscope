@@ -1,0 +1,3 @@
+[submodule "find-peaks"]
+	path = find-peaks
+	url = https://github.com/claydergc/find-peaks.git

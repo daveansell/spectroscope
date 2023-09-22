@@ -28,8 +28,9 @@
 #include <iostream>
 #include <thread>
 #define STB_IMAGE_IMPLEMENTATION
-
+#define MAX_PEAKS 20
 #include <stb/stb_image.h>
+#include <../find-peaks/PeakFinder.h>
 
 bool doShadow = true;
 bool doSlope = false;
@@ -70,8 +71,8 @@ private:
 	void makeWindow(char const *name);
 	void makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer &buffer);
 	uint32_t ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk,float *slope );
-        void findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks);
-        void parsePeaks(uint16_t *data, uint16_t *peaks);
+      //  void findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks);
+        void parsePeaks(uint16_t *data, uint16_t width);
 	void readCal();
 	void saveCal();
 	::Display *display_;
@@ -112,8 +113,8 @@ void EglPreview::saveCal(){
 
 	calfile.close();
 }
-
-void EglPreview::findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks){
+/*
+void EglPreview::findPeaks(uint16_t *data, uint16_t width, int *peaks, uint16_t maxPeaks){
 	float smooth[]={-1.0,-2.0, 2.0, 1.0};
 	int numPeaks =0;
 	float lastd = 0;
@@ -122,16 +123,26 @@ void EglPreview::findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks){
 		for(int i=0;i<4;i++){
 			d+=smooth[i]*data[x+i];
 		}
-		if(x>0 and d*lastd<0){
+		if(x>0 && d*lastd<0 && numPeaks<MAX_PEAKS){
 			peaks[numPeaks]=x+2;
 			numPeaks++;
 		}
 		lastd=d;
 	}
 }
-void EglPreview::parsePeaks(uint16_t *data, uint16_t *peaks){
-
-
+*/
+void EglPreview::parsePeaks(uint16_t *data, uint16_t width){
+	std::vector<float> in(data, data + width);
+	std::vector<int> out;
+	PeakFinder::findPeaks(in, out, false,1);
+	std::vector<int> order;
+	for(unsigned int i=0; i<out.size();i++){
+		order.push_back(i);
+	}
+	// sort the peaks
+	std::sort(order.begin(), order.end(), [&out](int i1, int i2){ return out[i1], out[i2];});
+	float realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
+		
 }
 
 void EglPreview::readCal(){

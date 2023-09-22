@@ -45,6 +45,7 @@ subdir('encoder')
 subdir('image')
 subdir('output')
 subdir('preview')
+subdir('find-peaks')
 subdir('post_processing_stages')
 subdir('utils')
 

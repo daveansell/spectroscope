@@ -33,6 +33,7 @@
 #include <stb/stb_image.h>
 #include <../find-peaks/PeakFinder.h>
 
+bool doMercury = true;
 bool doShadow = true;
 bool doSlope = false;
 char calFileName[] = "cal.txt";
@@ -74,7 +75,7 @@ private:
 	void makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer &buffer);
 	uint32_t ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk,float *slope );
       //  void findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks);
-        void parsePeaks(uint16_t *data, uint16_t width);
+        void parsePeaks(uint32_t *data, uint16_t width);
 	void readCal();
 	void saveCal();
 	::Display *display_;
@@ -133,7 +134,7 @@ void EglPreview::findPeaks(uint16_t *data, uint16_t width, int *peaks, uint16_t 
 	}
 }
 */
-void EglPreview::parsePeaks(uint16_t *data, uint16_t width){
+void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
 	std::vector<float> in(data, data + width);
 	std::vector<int> out;
 	PeakFinder::findPeaks(in, out, false,1);
@@ -144,12 +145,12 @@ void EglPreview::parsePeaks(uint16_t *data, uint16_t width){
 	// sort the peaks
 	std::sort(order.begin(), order.end(), [&out](int i1, int i2){ return out[i1]> out[i2];});
 	        // Try to swap any peaks obviously in the wrong order
-        if(out[order[0]] > out[order[1]]){
+        if(out.size()>1 && out[order[0]] > out[order[1]]){
                 int t=order[1];
                 order[1]=order[0];
                 order[0]=t;
         }
-        if(out[order[0]] > out[order[4]]){
+        if(out.size()>3 && out[order[0]] > out[order[4]]){
                 int t=order[3];
                 order[3]=order[4];
                 order[4]=t;
@@ -161,8 +162,10 @@ void EglPreview::parsePeaks(uint16_t *data, uint16_t width){
   gsl_matrix *X, *cov;
   gsl_vector *y, *w, *c;
 
-
-  n = 5;//atoi (argv[1]);
+  n = out.size()>5? 5: out.size();
+	if(n<3){
+		return;
+	}
 
   X = gsl_matrix_alloc (n, 3);
   y = gsl_vector_alloc (n);
@@ -884,18 +887,19 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		}
 		std::cout << "\n";
 		doShadow=false;
+	}
+	if(doMercury){
+		parsePeaks(shrunk, info.width);
+		doMercury=false;
 	}	
 	// ************************
 	// Draw Graph
 	// ************************
 	//
 	float shadowOpacity = 1.0-((float)(std::chrono::system_clock::now() - shadowTime).count()) / 10000000000;
-	std::cout << ((float)(std::chrono::system_clock::now()-shadowTime).count())/1000000000.0<< "-";
-        std::cout << "shadowOpacity=" << shadowOpacity << " ";
 	if(shadowOpacity<0) shadowOpacity=0.0;
 	if(shadowOpacity>1.0) shadowOpacity=1.0;
 	shadowOpacity*=0.5;
-        std::cout << "shadowOpacity=" << shadowOpacity << "\n";
 	glUseProgram(progGraph);
 //	glEnableVertexAttribArray(1);
 //	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, vertsGraph);

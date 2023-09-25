@@ -121,7 +121,7 @@ void freezeGraph(){
 }
 
 void calibrateMercury(){
-
+	doMercury=true;
 }
 
 void calibrateIncandescent(){

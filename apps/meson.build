@@ -9,6 +9,7 @@ sdlDep = dependency('sdl2', required: true)
 xDep = dependency('x11', required: true)
 epoxyDep = dependency('epoxy', required: true)
 stbDep = dependency('stb', required: true)
+gslDep = dependency('gsl', required: true)
 #glutDep = dependency('glut', required: true)
 
 
@@ -20,10 +21,10 @@ stbDep = dependency('stb', required: true)
 
 libcamera_vid = executable('libcamera-vid', files('libcamera_vid.cpp'),
                            include_directories : include_directories('..', '../include'),
-                           dependencies: [libcamera_dep, boost_dep, gluDep, glewDep,  sdlDep, xDep, epoxyDep, stbDep],
+                           dependencies: [libcamera_dep, boost_dep, gluDep, glewDep,  sdlDep, xDep, epoxyDep, stbDep, gslDep],
                            link_with : [libcamera_app],
                            install : true,
-			   link_args: ['-lpigpio'])
+			   link_args: ['-lpigpio','-lgsl','-lgslcblas','-lm','-L/usr/lib/arm-linux-gnueabihf'])
 
 #libcamera_hello = executable('libcamera-hello', files('libcamera_hello.cpp'),
 #                             include_directories : include_directories('..'),

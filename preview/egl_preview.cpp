@@ -22,7 +22,8 @@
 // We don't use Status below, so we could consider #undefining it here.
 // We do use None, so if we had to #undefine it we could replace it by zero
 // in what follows below.
-
+#include <math.h>
+#include <gsl/gsl_multifit.h>
 #include <epoxy/egl.h>
 #include <epoxy/gl.h>
 #include <iostream>
@@ -37,6 +38,7 @@ bool doSlope = false;
 char calFileName[] = "cal.txt";
 std::chrono::time_point <std::chrono::system_clock>shadowTime;
 int labelPositions[]={ 100,250,400,550,700,850,1000,1150};
+float labelValues[]={ 300,400,500,600,700,800,900,1000};
 int numLabels = 8;
 class EglPreview : public Preview
 {
@@ -140,9 +142,56 @@ void EglPreview::parsePeaks(uint16_t *data, uint16_t width){
 		order.push_back(i);
 	}
 	// sort the peaks
-	std::sort(order.begin(), order.end(), [&out](int i1, int i2){ return out[i1], out[i2];});
+	std::sort(order.begin(), order.end(), [&out](int i1, int i2){ return out[i1]> out[i2];});
+	        // Try to swap any peaks obviously in the wrong order
+        if(out[order[0]] > out[order[1]]){
+                int t=order[1];
+                order[1]=order[0];
+                order[0]=t;
+        }
+        if(out[order[0]] > out[order[4]]){
+                int t=order[3];
+                order[3]=order[4];
+                order[4]=t;
+        }
+
 	float realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
-		
+	int i, n;
+  double xi, yi, ei, chisq;
+  gsl_matrix *X, *cov;
+  gsl_vector *y, *w, *c;
+
+
+  n = 5;//atoi (argv[1]);
+
+  X = gsl_matrix_alloc (n, 3);
+  y = gsl_vector_alloc (n);
+  w = gsl_vector_alloc (n);
+
+  c = gsl_vector_alloc (3);
+  cov = gsl_matrix_alloc (3, 3);
+  for(i=0; i<n;i++){
+	yi=out[order[i]];
+      	xi=realPeaks[i];
+	ei=1.0;
+	gsl_matrix_set (X, i, 0, 1.0);
+      gsl_matrix_set (X, i, 1, xi);
+      gsl_matrix_set (X, i, 2, xi*xi);
+
+      gsl_vector_set (y, i, yi);
+      gsl_vector_set (w, i, 1.0/(ei*ei));
+    }
+gsl_multifit_linear_workspace * work
+      = gsl_multifit_linear_alloc (n, 3);
+    gsl_multifit_wlinear (X, w, y, c, cov,
+                          &chisq, work);
+    gsl_multifit_linear_free (work);
+
+#define C(i) (gsl_vector_get(c,(i)))
+
+    for(i=0; i<numLabels; i++){
+	labelPositions[i]=C(0)+C(1)*labelValues[i]+C(2)*labelValues[i]*labelValues[i];
+    }
 }
 
 void EglPreview::readCal(){

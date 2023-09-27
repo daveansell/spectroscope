@@ -48,6 +48,7 @@ Preview *make_preview(Options const *options);
 extern bool doShadow;
 extern bool doSlope;
 extern bool doMercury;
+extern bool doIncandescent;
 using namespace std::chrono;
 extern std::chrono::time_point <std::chrono::system_clock>shadowTime;
 

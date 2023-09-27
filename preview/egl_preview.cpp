@@ -23,7 +23,7 @@
 // We do use None, so if we had to #undefine it we could replace it by zero
 // in what follows below.
 #include <math.h>
-#include <gsl/gsl_multifit.h>
+#include <gsl/gsl_fit.h>
 #include <epoxy/egl.h>
 #include <epoxy/gl.h>
 #include <iostream>
@@ -33,7 +33,8 @@
 #include <stb/stb_image.h>
 #include <../find-peaks/PeakFinder.h>
 
-bool doMercury = true;
+bool doMercury = false;
+bool doIncandescent = false;
 bool doShadow = true;
 bool doSlope = false;
 char calFileName[] = "cal.txt";
@@ -76,6 +77,7 @@ private:
 	uint32_t ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk,float *slope );
       //  void findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks);
         void parsePeaks(uint32_t *data, uint16_t width);
+        void incandescentCal(uint32_t *shrunk, uint16_t width);
 	void readCal();
 	void saveCal();
 	::Display *display_;
@@ -100,12 +102,17 @@ private:
 	GLuint renderFramebufferName[1];
 	GLuint renderedTexture[2];
 	uint32_t *shrunk;
+	float *incandescentCalibration;
 	GLubyte *shadowData;
 	GLubyte * graphData;
 	GLubyte* pixels;
 	float slope;
 	GLint progText;
 	GLuint textTexture;
+//	float label_a;
+	double label_b;
+	double label_c;
+	Options const * theOptions;
 };
 
 void EglPreview::saveCal(){
@@ -141,60 +148,67 @@ void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
 	std::vector<int> order;
 	for(unsigned int i=0; i<out.size();i++){
 		order.push_back(i);
+		std::cout << "Peak"<< out[i]<<"\n";
 	}
 	// sort the peaks
 	std::sort(order.begin(), order.end(), [&out](int i1, int i2){ return out[i1]> out[i2];});
 	        // Try to swap any peaks obviously in the wrong order
         if(out.size()>1 && out[order[0]] > out[order[1]]){
-                int t=order[1];
-                order[1]=order[0];
-                order[0]=t;
+                int t = order[1];
+                order[1] = order[0];
+                order[0] = t;
         }
         if(out.size()>3 && out[order[0]] > out[order[4]]){
-                int t=order[3];
-                order[3]=order[4];
-                order[4]=t;
+                int t = order[3];
+                order[3] = order[4];
+                order[4] = t;
         }
 
-	float realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
+	double realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
 	int i, n;
-  double xi, yi, ei, chisq;
-  gsl_matrix *X, *cov;
-  gsl_vector *y, *w, *c;
-
-  n = out.size()>5? 5: out.size();
-	if(n<3){
+	double screenx[5];
+//  	double xi, yi, ei, chisq;
+//  	gsl_matrix *X, *cov;
+//  	gsl_vector *y, *w, *c;
+	double cov00, cov01, cov11, sumsq;
+  	n = out.size()>5? 5: out.size();
+	if( n < 3){
 		return;
 	}
+	for(i=0; i<n; i++){
+		screenx[i] = out[order[i]];
+	}
+	gsl_fit_linear (screenx, 1, realPeaks, 1, n, &label_c, &label_b, &cov00, &cov01, &cov11, &sumsq);
 
-  X = gsl_matrix_alloc (n, 3);
-  y = gsl_vector_alloc (n);
-  w = gsl_vector_alloc (n);
+/*  	X = gsl_matrix_alloc (n, 3);
+  	y = gsl_vector_alloc (n);
+  	w = gsl_vector_alloc (n);
 
-  c = gsl_vector_alloc (3);
-  cov = gsl_matrix_alloc (3, 3);
-  for(i=0; i<n;i++){
-	yi=out[order[i]];
-      	xi=realPeaks[i];
-	ei=1.0;
-	gsl_matrix_set (X, i, 0, 1.0);
-      gsl_matrix_set (X, i, 1, xi);
-      gsl_matrix_set (X, i, 2, xi*xi);
+  	c = gsl_vector_alloc (3);
+  	cov = gsl_matrix_alloc (3, 3);
+  	for(i=0; i<n;i++){
+		yi=out[order[i]];
+      		xi=realPeaks[i];
+		ei=1.0;
+		gsl_matrix_set (X, i, 0, 1.0);
+      		gsl_matrix_set (X, i, 1, xi);
+      		gsl_matrix_set (X, i, 2, xi*xi);
 
-      gsl_vector_set (y, i, yi);
-      gsl_vector_set (w, i, 1.0/(ei*ei));
-    }
-gsl_multifit_linear_workspace * work
-      = gsl_multifit_linear_alloc (n, 3);
-    gsl_multifit_wlinear (X, w, y, c, cov,
-                          &chisq, work);
-    gsl_multifit_linear_free (work);
+      		gsl_vector_set (y, i, yi);
+      		gsl_vector_set (w, i, 1.0/(ei*ei));
+    	}
+	gsl_multifit_linear_workspace * work = gsl_multifit_linear_alloc (n, 3);
+    	gsl_multifit_wlinear (X, w, y, c, cov, &chisq, work);
+    	gsl_multifit_linear_free (work);
 
 #define C(i) (gsl_vector_get(c,(i)))
-
-    for(i=0; i<numLabels; i++){
-	labelPositions[i]=C(0)+C(1)*labelValues[i]+C(2)*labelValues[i]*labelValues[i];
-    }
+    	label_c = C(0);
+    	label_b = C(1);
+    	label_a = C(2);*/
+    	for(i=0; i<numLabels; i++){
+		labelPositions[i]=label_c+label_b*labelValues[i];
+    	}
+    	std::cout << "Fit b=" << label_b << "x + c=" << label_c << "\n";
 }
 
 void EglPreview::readCal(){
@@ -206,6 +220,22 @@ void EglPreview::readCal(){
 		slope = atof(line.c_str());
 	calfile.close();
 }
+
+
+void EglPreview::incandescentCal(uint32_t *shrunk, uint16_t width){
+	const float hbar = 6.6e-34*2.0*3.142;
+	const float k = 1.38e-23;
+	const float T = 3000;
+	const float c = hbar / k/ T * 1.0e9;
+	for(unsigned int x=0; x<width;x++){
+		float wl = (-label_c + x)/label_b;
+
+		std::cout << wl << "_" << c << "_";
+		incandescentCalibration[x] = 1.0e-9*wl*wl*wl/(exp(c/wl)-1.0)/shrunk[x];
+		std::cout << incandescentCalibration[x] << "\n";
+	}
+}
+
 
 static GLint compile_shader(GLenum target, const char *source)
 {
@@ -494,6 +524,7 @@ EglPreview::EglPreview(Options const *options) : Preview(options), last_fd_(-1),
 	y_ = options_->preview_y;
 	width_ = options_->preview_width;
 	height_ = options_->preview_height;
+	theOptions = options;
 	makeWindow("libcamera-app");
 
 	// gl_setup() has to happen later, once we're sure we're in the display thread.
@@ -553,7 +584,6 @@ void EglPreview::makeWindow(char const *name)
 	Window root = RootWindow(display_, screen_num);
 	int screen_width = DisplayWidth(display_, screen_num);
 	int screen_height = DisplayHeight(display_, screen_num);
-	std::cout <<"makeWindow\n";
 	// Default behaviour here is to use a 1024x768 window.
 	if (width_ == 0 || height_ == 0)
 	{
@@ -567,6 +597,7 @@ void EglPreview::makeWindow(char const *name)
 		width_ = DisplayWidth(display_, screen_num);
 		height_ = DisplayHeight(display_, screen_num);
 	}
+	std::cout <<"makeWindow width="<< width_ << " height=" << height_<<"\n";
 
 	static const EGLint attribs[] =
 		{
@@ -627,6 +658,21 @@ void EglPreview::makeWindow(char const *name)
 		throw std::runtime_error("eglCreateContext failed");
 
 	XFree(visinfo);
+	typedef struct Hints
+	{
+    		unsigned long   flags;
+    		unsigned long   functions;
+    		unsigned long   decorations;
+    		long            inputMode;
+    		unsigned long   status;
+	} Hints;
+	//code to remove decoration
+	Hints hints;
+	Atom property;
+	hints.flags = 2;
+	hints.decorations = 0;
+	property = XInternAtom(display_, "_MOTIF_WM_HINTS", true);
+	XChangeProperty(display_,window_,property,property,32,PropModeReplace,(unsigned char *)&hints,5);
 
 	XMapWindow(display_, window_);
 
@@ -676,11 +722,16 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
+		incandescentCalibration = new float[info.width+2];
+		for(unsigned int i=0; i<info.width;i++){
+			incandescentCalibration[i]=1.0;
+		}
 		shadowData = new GLubyte[info.width*4*8+1];
        		pixels = new GLubyte[info.width * info.height * 4+20];
 //	first_time_ = false;
 	}
-
+	label_b = 1;
+	label_c = 0;
 	buffer.fd = fd;
 	buffer.size = size;
 	buffer.info = info;
@@ -740,7 +791,7 @@ void EglPreview::SetInfoText(const std::string &text)
 			return d;
 		}
 
-void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
+void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y0, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
 	*maxVal = 0;
 	for(uint16_t x=x0; x<x1; x++){
 		output[x]=0;
@@ -749,7 +800,7 @@ void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t h
 			if (x2<0) x2=0;
 			if (x2>width-1) x2=width-1;
 //			std::cout << "y"<< y<<" h"<<height<<"s"<< (y*stride+x2) << "\n";
-			output[x] += data[(y*stride+x2)]*3
+			output[x] += data[(y*stride+x2)]*2//3
 				+ data[(int)((y/4+height)*stride+(x2)/4)]*0.781
 			       	+ data[(int)((y/4+1.25*height)*stride+(x2)/4)]*1.63;
 //			output[x] += data[4*(y*width+x+x2) + 1];
@@ -768,10 +819,14 @@ uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_
         //libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
 
 //      Reduce the data using 4threads to speed it up
-        std::thread t1(&Shrink, pixels, 0, info->width/4, info->width, info->height, info->stride, shrunk, &max1,*slope2 );
-        std::thread t2(&Shrink, pixels, info->width/4, info->width/2, info->width, info->height, info->stride, shrunk, &max2, *slope2 );
-        std::thread t3(&Shrink, pixels, info->width/2, 3*info->width/4, info->width, info->height, info->stride, shrunk, &max3,*slope2 );
-        std::thread t4(&Shrink, pixels, 3*info->width/4, info->width, info->width, info->height, info->stride, shrunk, &max4,*slope2 );
+	int16_t r_x = theOptions->roi_x*info->width;      
+	int16_t r_y = theOptions->roi_y*info->height;
+	int16_t r_width = theOptions->roi_width * info->width;
+	int16_t r_height = theOptions->roi_height * info->height;
+        std::thread t1(&Shrink, pixels, r_x, r_width/4, r_width, r_y, r_height, info->stride, shrunk, &max1,*slope2 );
+        std::thread t2(&Shrink, pixels, r_x + r_width/4, r_x + r_width/2, r_width,r_y, r_height, info->stride, shrunk, &max2, *slope2 );
+        std::thread t3(&Shrink, pixels, r_x + r_width/2, r_x + 3*r_width/4, r_width, r_y, r_height, info->stride, shrunk, &max3,*slope2 );
+        std::thread t4(&Shrink, pixels, r_x + 3*r_width/4, r_x+r_width, r_width, r_y, r_height, info->stride, shrunk, &max4,*slope2 );
         t1.join();
         t2.join();
         t3.join();
@@ -792,7 +847,6 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	w_factor /= max_dimension;
 	h_factor /= max_dimension;
 
-//	std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "\n";
 //	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 //	static const float vertsShrink[] = { -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
 //	static const float vertsGraph[] = { -1, -1, 1, -1, 1, 1, -1, 1 };
@@ -804,6 +858,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		graphData = new GLubyte[info.width*4*8+1];
 		first_time_=false;
 		}
+		std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "w_factor" << w_factor << "h_factor" << h_factor << "\n";
 	}
 	//std::cout << "width=" << width_ << " height=" << height_ << "\n";
 	glClearColor(0, 0, 0, 0);
@@ -869,6 +924,17 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if(max4>max1) max1=max4;
 */
 //	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
+	if(doIncandescent){
+		incandescentCal(shrunk,info.width);
+		doIncandescent=false;
+	}
+	if(doMercury){
+		parsePeaks(shrunk, info.width);
+		doMercury=false;
+	}
+	for(unsigned int i=0; i<info.width;i++){
+		shrunk[i] = (int32_t)(incandescentCalibration[i] * (float)shrunk[i]); 
+	}
 	float scale=(256.0*256-1)/max1;
 	// map pixel buffer
 	for(uint16_t i=0; i<info.width*4*4; i+=4){
@@ -881,17 +947,13 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if(doShadow){
 		std::cout << "Do shadow\n"; 
 //std::memcpy(graphData, shadowData, info.width*4*8);
-		for(uint16_t i=0;i<info.width*4*4;i++){
+		for(uint16_t i=0;i<(int)info.width*4*4;i++){
 			shadowData[i]=graphData[i];
-			std::cout << (int)shadowData[i] <<",";
 		}
 		std::cout << "\n";
 		doShadow=false;
 	}
-	if(doMercury){
-		parsePeaks(shrunk, info.width);
-		doMercury=false;
-	}	
+
 	// ************************
 	// Draw Graph
 	// ************************
@@ -934,7 +996,9 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 //	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);       // Vertex attributes stay the same
   //  	glEnableVertexAttribArray(0);
   	for(int i=0; i<numLabels;i++){
-		draw_text(i, labelPositions[i], 15, 200, 30,1.0, progText, &textTexture);
+		if(labelPositions[i] >=0 && labelPositions[i]<(int)info.width){
+			draw_text(i, labelPositions[i], 15, 200, 30,1.0, progText, &textTexture);
+		}
 	}
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)

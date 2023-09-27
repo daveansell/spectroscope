@@ -121,10 +121,14 @@ void freezeGraph(){
 }
 
 void calibrateMercury(){
+	std::cout<< "calibrateMercury()\n";
 	doMercury=true;
+	doSlope=true;
 }
 
 void calibrateIncandescent(){
+	std::cout<< "calibrateIncandescent()\n";
+	doIncandescent=true;
 
 }
 
@@ -248,13 +252,21 @@ static void event_loop(LibcameraEncoder &app)
 			}
 		}else if(switchState==1 && (duration > std::chrono::milliseconds(BETWEEN_PRESSES) && numPresses>0)){
 			std::cout << "Pressed_"<< numPresses;
+			//libcamera::ControlList newControls;
+			//const libcamera::CameraControlValidator * validator = app.validator();
+			
 			switch(numPresses){
-				case 3:
+				case 3: // Do calibration on mercury lamp
+			//		if( validator->validate(controls::AfMode)){
+			//			newControls.set(controls::AfMode, controls::AfModeManual);
+			//			app.SetControls(newControls);
+			//	        	newControls.clear();	
+			//		}
 					calibrateMercury();
 					break;
 				case 4:
 					calibrateIncandescent();
-				break;
+					break;
 				case 5:
 					calibrateSlope();
 					break;

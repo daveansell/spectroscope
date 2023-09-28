@@ -819,10 +819,14 @@ uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_
         //libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
 
 //      Reduce the data using 4threads to speed it up
-	int16_t r_x = theOptions->roi_x*info->width;      
-	int16_t r_y = theOptions->roi_y*info->height;
-	int16_t r_width = theOptions->roi_width * info->width;
-	int16_t r_height = theOptions->roi_height * info->height;
+	//int16_t r_x = theOptions->roi_x*info->width;      
+	//int16_t r_y = theOptions->roi_y*info->height;
+	//int16_t r_width = theOptions->roi_width * info->width;
+	//int16_t r_height = theOptions->roi_height * info->height;
+	int16_t r_x = 0;//theOptions->roi_x*info->width;      
+	int16_t r_y = 0;//theOptions->roi_y*info->height;
+	int16_t r_width = info->width;//theOptions->roi_width * info->width;
+	int16_t r_height = info->height;//theOptions->roi_height * info->height;
 	if(r_width ==0 or r_height==0){
 		r_x=r_y=0;
 		r_width=info->width;
@@ -852,7 +856,7 @@ uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_
 void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &info)
 {
 	float w_factor = info.width / (float)width_;
-	float h_factor = info.height / (float)height_;
+	float h_factor = info.height / (float)height_ *2;
 	float max_dimension = std::max(w_factor, h_factor);
 	w_factor /= max_dimension;
 	h_factor /= max_dimension;
@@ -920,19 +924,6 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		doSlope=false;
 		std::cout << "slope=" << slope << "\n"; 
 	}
-	/*
-	std::thread t1(&Shrink, pixels, 0, info.width/4, info.width, info.height, info.stride, shrunk, &max1,0 );
-	std::thread t2(&Shrink, pixels, info.width/4, info.width/2, info.width, info.height, info.stride, shrunk, &max2,0 );
-	std::thread t3(&Shrink, pixels, info.width/2, 3*info.width/4, info.width, info.height, info.stride, shrunk, &max3,0 );
-	std::thread t4(&Shrink, pixels, 3*info.width/4, info.width, info.width, info.height, info.stride, shrunk, &max4,0 );
-	t1.join();
-	t2.join();
-	t3.join();
-	t4.join();
-	if(max2>max1) max1=max2;
-	if(max3>max1) max1=max3;
-	if(max4>max1) max1=max4;
-*/
 //	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)(0));
 	if(doIncandescent){
 		incandescentCal(shrunk,info.width);
@@ -999,7 +990,8 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	// Give an empty image to OpenGL ( the last "0" )
 	//glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
-	glViewport( (1.0-w_factor/2)/2*width_,0,width_*w_factor/2,height_/2);
+	//cout << "x0=" << (1.0-w_factor/2)/2*width_ << "y0=" << 0 << " height=" << (width_*w_factor/2) << "height" <<height_/2 << "\n";
+	glViewport( (1.0-w_factor)/2*width_,0,width_*w_factor,height_/2);
 	//glClear(GL_COLOR_BUFFER_BIT);
 	glDrawArrays(GL_TRIANGLE_FAN, 8, 4);
 //	GLuint vbo;

@@ -791,15 +791,15 @@ void EglPreview::SetInfoText(const std::string &text)
 			return d;
 		}
 
-void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y0, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
+void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y0, uint16_t y1, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
 	*maxVal = 0;
 	for(uint16_t x=x0; x<x1; x++){
 		output[x]=0;
-		for(uint16_t y=0; y<height; y++){
+		for(uint16_t y=y0; y<y1; y++){
 			int x2 = x+slope * y;
 			if (x2<0) x2=0;
-			if (x2>width-1) x2=width-1;
-//			std::cout << "y"<< y<<" h"<<height<<"s"<< (y*stride+x2) << "\n";
+			if (x2>x1-1) x2=width-1;
+//			std::cout << "x="<<x<<"y"<< y<<" h"<<height<<"s"<< (y*stride+x2) << "\n";
 			output[x] += data[(y*stride+x2)]*2//3
 				+ data[(int)((y/4+height)*stride+(x2)/4)]*0.781
 			       	+ data[(int)((y/4+1.25*height)*stride+(x2)/4)]*1.63;
@@ -815,7 +815,7 @@ void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y
 }
 
 uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk, float *slope2       ){
-        uint32_t max1, max2, max3, max4;
+        uint32_t max1=0, max2=0, max3=0, max4=0;
         //libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
 
 //      Reduce the data using 4threads to speed it up
@@ -823,10 +823,20 @@ uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_
 	int16_t r_y = theOptions->roi_y*info->height;
 	int16_t r_width = theOptions->roi_width * info->width;
 	int16_t r_height = theOptions->roi_height * info->height;
-        std::thread t1(&Shrink, pixels, r_x, r_width/4, r_width, r_y, r_height, info->stride, shrunk, &max1,*slope2 );
-        std::thread t2(&Shrink, pixels, r_x + r_width/4, r_x + r_width/2, r_width,r_y, r_height, info->stride, shrunk, &max2, *slope2 );
-        std::thread t3(&Shrink, pixels, r_x + r_width/2, r_x + 3*r_width/4, r_width, r_y, r_height, info->stride, shrunk, &max3,*slope2 );
-        std::thread t4(&Shrink, pixels, r_x + 3*r_width/4, r_x+r_width, r_width, r_y, r_height, info->stride, shrunk, &max4,*slope2 );
+	if(r_width ==0 or r_height==0){
+		r_x=r_y=0;
+		r_width=info->width;
+		r_height=info->height;
+	}
+	for(uint16_t x=0; x<info->width;x++){
+		shrunk[x]=0;
+	}
+	//std::cout << "r_x=" << r_x << " r_y=" << r_y << " r_width=" << r_width << " r_height=" << r_height << "\n";
+        //std::thread t1(&Shrink, pixels, 20, 		   400,     r_width, 0, info->height, info->height, info->stride, shrunk, &max1, *slope2 );
+        std::thread t1(&Shrink, pixels, r_x, 		   r_x + r_width/4,     r_width, r_y, r_y+r_height, info->height, info->stride, shrunk, &max1, *slope2 );
+        std::thread t2(&Shrink, pixels, r_x + r_width/4,   r_x + r_width/2,     r_width, r_y, r_y+r_height, info->height, info->stride, shrunk, &max2, *slope2 );
+        std::thread t3(&Shrink, pixels, r_x + r_width/2,   r_x + (3*r_width)/4, r_width, r_y, r_y+r_height, info->height, info->stride, shrunk, &max3, *slope2 );
+        std::thread t4(&Shrink, pixels, r_x + (3*r_width)/4, r_x+r_width, 	r_width, r_y, r_y+r_height, info->height, info->stride, shrunk, &max4, *slope2 );
         t1.join();
         t2.join();
         t3.join();
@@ -932,8 +942,12 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		parsePeaks(shrunk, info.width);
 		doMercury=false;
 	}
+	max1 = 0;
 	for(unsigned int i=0; i<info.width;i++){
 		shrunk[i] = (int32_t)(incandescentCalibration[i] * (float)shrunk[i]); 
+		if(shrunk[i]>max1){
+			max1=shrunk[i];
+		}
 	}
 	float scale=(256.0*256-1)/max1;
 	// map pixel buffer

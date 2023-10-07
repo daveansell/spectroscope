@@ -33,6 +33,28 @@
 #include <stb/stb_image.h>
 #include <../find-peaks/PeakFinder.h>
 
+#define R_PROP 1.0
+#define G_PROP 1.0
+#define B_PROP 1.0
+
+#define RY 1.0
+#define RU 0.0
+#define RV 1.4075
+
+#define GY 1.0
+#define GU -0.3455
+#define GV -0.7169
+
+#define BY 1.0
+#define BU 1.779
+#define BV 0.0
+
+
+#define Y_FAC (BY*B_PROP + RY*R_PROP + GY*G_PROP)
+#define U_FAC (BU*B_PROP + RU*R_PROP + GU*G_PROP) 
+#define V_FAC (BV*B_PROP + RV*R_PROP + GV*G_PROP)
+
+
 bool doMercury = false;
 bool doIncandescent = false;
 bool doShadow = true;
@@ -100,9 +122,9 @@ private:
 	GLint progShrink;
 	GLint progGraph;
 	GLuint renderFramebufferName[1];
-	GLuint renderedTexture[2];
+	GLuint renderedTexture[3];
 	uint32_t *shrunk;
-	float *incandescentCalibration;
+	double *incandescentCalibration;
 	GLubyte *shadowData;
 	GLubyte * graphData;
 	GLubyte* pixels;
@@ -146,13 +168,21 @@ void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
 	std::vector<int> out;
 	PeakFinder::findPeaks(in, out, false,1);
 	std::vector<int> order;
+	double realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
+	unsigned int numPeaks=0;
 	for(unsigned int i=0; i<out.size();i++){
-		order.push_back(i);
-		std::cout << "Peak"<< out[i]<<"\n";
+		if(i>0 && data[out[i]]!=data[out[i-1]]){
+			order.push_back(i);
+			std::cout << "Peak"<< out[i]<<","<< data[out[i]] <<"\n";
+			numPeaks++;
+		}
 	}
 	// sort the peaks
-	std::sort(order.begin(), order.end(), [&out](int i1, int i2){ return out[i1]> out[i2];});
+	std::sort(order.begin(), order.end(), [&out,&data](int i1, int i2){ return data[out[i1]]> data[out[i2]];});
 	        // Try to swap any peaks obviously in the wrong order
+	for(unsigned int i=0; i<numPeaks;i++){
+		std::cout << "sorted Peak"<< out[order[i]]<<","<< data[out[order[i]]] <<" -> " << realPeaks[i] << "\n";
+	}
         if(out.size()>1 && out[order[0]] > out[order[1]]){
                 int t = order[1];
                 order[1] = order[0];
@@ -164,21 +194,28 @@ void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
                 order[4] = t;
         }
 
-	double realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
+	for(unsigned int i=0; i<numPeaks;i++){
+		std::cout << " i=" << i << "\n";
+		std::cout << "sorted Peak2 "<< out[order[i]]<<","<<" -> " << realPeaks[i] << "\n";
+		labelPositions[order[i]] = out[order[i]];
+	}
 	int i, n;
 	double screenx[5];
 //  	double xi, yi, ei, chisq;
 //  	gsl_matrix *X, *cov;
 //  	gsl_vector *y, *w, *c;
 	double cov00, cov01, cov11, sumsq;
-  	n = out.size()>5? 5: out.size();
-	if( n < 3){
+  	n = numPeaks>5? 5: numPeaks;
+	if( numPeaks < 3){
 		return;
 	}
+	std::cout << " Pre Loop"  << "\n";
 	for(i=0; i<n; i++){
 		screenx[i] = out[order[i]];
 	}
-	gsl_fit_linear (screenx, 1, realPeaks, 1, n, &label_c, &label_b, &cov00, &cov01, &cov11, &sumsq);
+	std::cout << " Pre fit"  << "\n";
+	gsl_fit_linear (realPeaks, 1, screenx, 1, n, &label_c, &label_b, &cov00, &cov01, &cov11, &sumsq);
+	std::cout << " Post fit"  << "\n";
 
 /*  	X = gsl_matrix_alloc (n, 3);
   	y = gsl_vector_alloc (n);
@@ -206,6 +243,7 @@ void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
     	label_b = C(1);
     	label_a = C(2);*/
     	for(i=0; i<numLabels; i++){
+		std::cout << "Label " << labelValues[i] << " " << ( label_c+label_b*labelValues[i] ) << "\n";
 		labelPositions[i]=label_c+label_b*labelValues[i];
     	}
     	std::cout << "Fit b=" << label_b << "x + c=" << label_c << "\n";
@@ -223,17 +261,29 @@ void EglPreview::readCal(){
 
 
 void EglPreview::incandescentCal(uint32_t *shrunk, uint16_t width){
-	const float hbar = 6.6e-34*2.0*3.142;
+	const float h = 6.6e-34;
 	const float k = 1.38e-23;
 	const float T = 3000;
-	const float c = hbar / k/ T * 1.0e9;
+	const float c = h / k/ T * 1.0e-9;
+	float max = -1;
 	for(unsigned int x=0; x<width;x++){
 		float wl = (-label_c + x)/label_b;
+		double f = 3.0e8 / wl /1.0e-9;
 
-		std::cout << wl << "_" << c << "_";
-		incandescentCalibration[x] = 1.0e-9*wl*wl*wl/(exp(c/wl)-1.0)/shrunk[x];
+		std::cout << f << "_" << (c*f) << "_ ";
+		incandescentCalibration[x] = f*f*f/(exp(c*f)-1.0);
+		std::cout << incandescentCalibration[x] << "->" << shrunk[x] << "  ";
+		incandescentCalibration[x] /= shrunk[x];
+		if(incandescentCalibration[x] > x){
+			max=incandescentCalibration[x];
+		}
 		std::cout << incandescentCalibration[x] << "\n";
 	}
+	for(unsigned int x=0; x<width;x++){
+		incandescentCalibration[x] *= 500.0/max;
+		std::cout << "x="<< x << " -> " << incandescentCalibration[x] << "\n";
+	}
+
 }
 
 
@@ -329,23 +379,24 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 					 "	float x = float(texcoord.x)*0.5 + 0.5;\n"
 					 "	vec4 p = texture2D(s, vec2(x,0));\n"
 					 "	float v = p.x;\n"
-					 "	vec4 pl = texture2D(s, vec2(x-%f,0));\n"
-					 "	float vl = pl.x;\n"
-					 "	vec4 pr = texture2D(s, vec2(x+%f,0));\n"
-					 "	float vr = pr.x;\n"
+					 "//	vec4 pl = texture2D(s, vec2(x-%f,0));\n"
+					 "//	float vl = pl.x;\n"
+					 "//	vec4 pr = texture2D(s, vec2(x+%f,0));\n"
+					 "//	float vr = pr.x;\n"
 					 "	float y = texcoord.y * 0.5 + 0.5;\n"
-// need to add shadow here
-					 "	if( y < v && y<vl && y<vr){\n"
-					 "	  	gl_FragColor = vec4(1,0,0,1);\n"
-					 "	}else{\n"
-					 "	 	if(y>v && y>vl && y>vr){\n"
-					 "			gl_FragColor = vec4(0,0,0,1);\n"
-					 "		}else if(y>vl && y>vr){\n"
-					 "			gl_FragColor = vec4(0.5,0.0,0.0,1);\n"
-					 "		}else {\n"
-					 "			gl_FragColor = vec4(0.25,0.0,0.0,1);\n"
-					 "		}\n"
-					 "	}\n"
+					 "	if(y<p.x){\n"
+ 					 "//	if( y < v && y<vl && y<vr){\n"
+					 "	  	gl_FragColor = vec4(1.0,0,0.0,1);\n"
+					 "	}else{gl_FragColor = vec4(0.0,0.0,0.1,1.0);}\n"
+					 "//	else{\n"
+					 "//	 	if(y>v && y>vl && y>vr){\n"
+					 "//			gl_FragColor = vec4(0,0,0.0,1);\n"
+					 "//		}else if(y>vl && y>vr){\n"
+					 "//			gl_FragColor = vec4(0.5,0.0,0.0,1);\n"
+					 "//		}else {\n"
+					 "//			gl_FragColor = vec4(0.25,0.0,0.0,1);\n"
+					 "//		}\n"
+					 "//	}\n"
 					 "	if(texture2D(shadow,vec2(x,0)).x>y){\n"
 					 "		gl_FragColor += vec4(shadowOpacity,shadowOpacity,shadowOpacity,0);\n"
 					 "	}\n"
@@ -435,7 +486,7 @@ static GLint gl_text_setup(GLuint *texture){
                          "\n"
                          "void main() {\n"
                          "  gl_Position = pos;\n"
-                         "  texcoord.x =pos.x*1.3;\n"
+                         "  texcoord.x =pos.x*0.5;\n"
                          "  texcoord.y =-(pos.y-0.75-imageNo)*0.0625;\n"
                          "}\n";
 
@@ -491,12 +542,12 @@ static GLint draw_text(int imageNo,int x, int y, int width, int height, float sc
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D,*texture);
         glUniform1f(glGetUniformLocation(prog,"imageNo"), (float)imageNo*2);
-        glUniform1f(glGetUniformLocation(prog,"scale"), 1.0/8.0*2.0);
+        glUniform1f(glGetUniformLocation(prog,"scale"), scale);
 	// we have put this texture into GL_TEXTURE3
         glUniform1i(glGetUniformLocation(prog,"s"), 3);
         // Give an empty image to OpenGL ( the last "0" )
         //glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
-        glViewport( x,y,width*scale,height*scale);
+        glViewport( x,y,width,height);
         //glClear(GL_COLOR_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
@@ -722,7 +773,7 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		progGraph=gl_setupGraph(info.width, info.height, width_, height_);
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
-		incandescentCalibration = new float[info.width+2];
+		incandescentCalibration = new double[info.width+2];
 		for(unsigned int i=0; i<info.width;i++){
 			incandescentCalibration[i]=1.0;
 		}
@@ -794,30 +845,53 @@ void EglPreview::SetInfoText(const std::string &text)
 void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y0, uint16_t y1, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
 	*maxVal = 0;
 	for(uint16_t x=x0; x<x1; x++){
-		output[x]=0;
-		for(uint16_t y=y0; y<y1; y++){
-			int x2 = x+slope * y;
+		for(uint16_t y=y0; y<y1; y+=4){
+			float x2f = slope * y + x;
+			int x2 = (int)x2f;
+			float rem = x2f-x2;
 			if (x2<0) x2=0;
-			if (x2>x1-1) x2=width-1;
-//			std::cout << "x="<<x<<"y"<< y<<" h"<<height<<"s"<< (y*stride+x2) << "\n";
-			output[x] += data[(y*stride+x2)]*2//3
-				+ data[(int)((y/4+height)*stride+(x2)/4)]*0.781
-			       	+ data[(int)((y/4+1.25*height)*stride+(x2)/4)]*1.63;
-//			output[x] += data[4*(y*width+x+x2) + 1];
-//			output[x] += data[4*(y*width+x+x2) + 2];
-		}
-		//output[x]/=height;
-		if(output[x]>*maxVal){
-			*maxVal=output[x];
+			float val= (data[(y*stride+x2)])*Y_FAC//3.0
+				+ (data[(int)((y/2+height)*stride+(x2)/2)]-128)*U_FAC//0.781
+			       	+ (data[(int)((0.5+y/2+height)*stride+(x2)/2)]-128)*V_FAC;//1.63 ;
+			output[x] += (1.0-rem) * val;
+			if(x<width-2){
+				output[x+1] += rem*val;
+			}
 		}
 	}
 	
 }
+/*
 
+// for SRGGB10
+void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y0, uint16_t y1, uint16_t height, uint16_t stride, uint32_t * output, uint32_t * maxVal, float slope){
+	*maxVal = 0;
+	int16_t  stride2 = stride;
+	uint16_t *iData = (uint16_t*) data;
+	for(uint16_t x=x0; x<x1; x++){
+		for(uint16_t y=y0; y<y1; y+=8){
+        		//std::cout << "x=" <<x << " y=" << y <<" height="<< height<<"\n";
+			float x2f = slope * y + x;
+			int x2 = (int)x2f;
+			float rem = x2f-x2;
+			if (x2<0) x2=0;
+			float val = 
+				// green
+			       	iData[ (y+x%2)*stride2 + x ] * G_PROP +// green
+			      	iData[ (y+x+1)*stride2 + x + !(x%2) ] * R_PROP + // red
+				iData[ (y+x) *stride2 + x - x%2 ] * B_PROP; // blue
+			output[x] += (1.0-rem) * val;
+			if(x<width-2){
+				output[x+1] += rem*val;
+			}
+		}
+	}
+	
+}
+*/
 uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_t *shrunk, float *slope2       ){
         uint32_t max1=0, max2=0, max3=0, max4=0;
         //libcamera::Span<uint8_t> buffer = app.Mmap(buffers_[fd])[0];
-
 //      Reduce the data using 4threads to speed it up
 	//int16_t r_x = theOptions->roi_x*info->width;      
 	//int16_t r_y = theOptions->roi_y*info->height;
@@ -848,7 +922,7 @@ uint32_t EglPreview::ShrinkData(GLubyte *pixels, StreamInfo const *info, uint32_
         if(max2>max1) max1=max2;
         if(max3>max1) max1=max3;
         if(max4>max1) max1=max4;
-  //      std::cout << "info.width=" << info->width << " info.height=" << info->height << " info.stride="<< info->stride << "max="<<max1<<"\n";
+//        std::cout << "info.width=" << info->width << " info.height=" << info->height << " info.stride="<< info->stride << "shurnk[5]="<<shrunk[5]<<"\n";
         return max1;
 }
 
@@ -860,6 +934,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	float max_dimension = std::max(w_factor, h_factor);
 	w_factor /= max_dimension;
 	h_factor /= max_dimension;
+	//std::cout << "streaminfo->pixel_format=" << info->pixel_format<<"\n";
 
 //	static const float vertsVid[] = { -w_factor, -h_factor, w_factor, -h_factor, w_factor, h_factor, -w_factor, h_factor };
 //	static const float vertsShrink[] = { -1.0, -1.0,  1.0, -1.0,  1.0, 1.0,  -1, 1.0 };
@@ -872,10 +947,11 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		graphData = new GLubyte[info.width*4*8+1];
 		first_time_=false;
 		}
-		std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "w_factor" << w_factor << "h_factor" << h_factor << "\n";
+		//std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "w_factor" << w_factor << "h_factor" << h_factor << "\n";
 	}
 	//std::cout << "width=" << width_ << " height=" << height_ << "\n";
-	glClearColor(0, 0, 0, 0);
+	glClearColor(0, 0, 0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
 	// ***********************
 	// Display normal video
 	// ***********************
@@ -942,7 +1018,8 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	}
 	float scale=(256.0*256-1)/max1;
 	// map pixel buffer
-	for(uint16_t i=0; i<info.width*4*4; i+=4){
+	//for(uint16_t i=0; i<info.width*4*4; i+=4){
+	for(uint16_t i=0; i<info.width*4; i+=4){
 		uint16_t value = scale * shrunk[i/4];
 		graphData[i] =   value / 256;
 		graphData[i+1] =  value % 256; 
@@ -952,7 +1029,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if(doShadow){
 		std::cout << "Do shadow\n"; 
 //std::memcpy(graphData, shadowData, info.width*4*8);
-		for(uint16_t i=0;i<(int)info.width*4*4;i++){
+		for(uint16_t i=0;i<(int)info.width*4;i++){
 			shadowData[i]=graphData[i];
 		}
 		std::cout << "\n";
@@ -963,6 +1040,13 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	// Draw Graph
 	// ************************
 	//
+//	std::cout << "GraphData[5]="
+//		<< ","<< (int)graphData[0] 
+//		<< ","<< (int)graphData[1] 
+//		<< ","<< (int)graphData[2] 
+//		<< ","<< (int)graphData[3] 
+//		<< ","<< (int)graphData[4]; 
+//	std::cout << " Scale="<< scale <<"\n"; 
 	float shadowOpacity = 1.0-((float)(std::chrono::system_clock::now() - shadowTime).count()) / 10000000000;
 	if(shadowOpacity<0) shadowOpacity=0.0;
 	if(shadowOpacity>1.0) shadowOpacity=1.0;
@@ -974,13 +1058,17 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		std::cout << "FrameBuffer Graph issue\n";
 	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D,renderedTexture[0]);
+	glBindTexture(GL_TEXTURE_2D,renderedTexture[1]);
 
 	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, graphData);
 	glUniform1i(glGetUniformLocation(progGraph,"s"), 1);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D,renderedTexture[1]);
+	glBindTexture(GL_TEXTURE_2D,renderedTexture[2]);
 	glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, info.width, 1, 0,GL_RGBA, GL_UNSIGNED_BYTE, shadowData);
 	glUniform1i(glGetUniformLocation(progGraph,"shadow"), 2);
 	glUniform1f(glGetUniformLocation(progGraph,"shadowOpacity"), shadowOpacity);
@@ -990,7 +1078,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	// Give an empty image to OpenGL ( the last "0" )
 	//glUniform1f( glGetUniformLocation(progGraph, "scale"), 1.0);
-	//cout << "x0=" << (1.0-w_factor/2)/2*width_ << "y0=" << 0 << " height=" << (width_*w_factor/2) << "height" <<height_/2 << "\n";
+//	std::cout << "x0=" << (1.0-w_factor)/2*width_ << "y0=" << 0 << " width=" << (width_*w_factor) << "height" <<height_/2 << "\n";
 	glViewport( (1.0-w_factor)/2*width_,0,width_*w_factor,height_/2);
 	//glClear(GL_COLOR_BUFFER_BIT);
 	glDrawArrays(GL_TRIANGLE_FAN, 8, 4);
@@ -1003,9 +1091,11 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
   //  	glEnableVertexAttribArray(0);
   	for(int i=0; i<numLabels;i++){
 		if(labelPositions[i] >=0 && labelPositions[i]<(int)info.width){
-			draw_text(i, labelPositions[i], 15, 200, 30,1.0, progText, &textTexture);
+			//std::cout << "lp" << labelPositions[i];
+			draw_text(i, labelPositions[i], 20, 50, 20,2.0, progText, &textTexture);
 		}
 	}
+	//std::cout << "\n";
 	EGLBoolean success [[maybe_unused]] = eglSwapBuffers(egl_display_, egl_surface_);
 	if (last_fd_ >= 0)
 		done_callback_(last_fd_);

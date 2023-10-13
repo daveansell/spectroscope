@@ -244,17 +244,27 @@ void EglPreview::findPeaks(uint16_t *data, uint16_t width, int *peaks, uint16_t 
 void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
 	std::vector<float> in(data, data + width);
 	std::vector<int> out;
+	std::cout << "parsePeaks"<<"\n";
 	PeakFinder::findPeaks(in, out, false,1);
+	std::cout << "doneFindPeaks"<<"\n";
 	std::vector<int> order;
 	double realPeaks[]={542.5, 610.4, 435.1, 486.7, 586.2};
 	unsigned int numPeaks=0;
+	std::cout << "out.size()"<< out.size()<<"\n";
+	if(out.size()<3){
+		return;
+	}
 	for(unsigned int i=0; i<out.size();i++){
+		std::cout << "i=" << i<<"\n";
+		std::cout << "out[i]"<< out[i]<<"\n";
+		std::cout << "out[i-1]"<< out[i-1]<<"\n";
 		if(i>0 && data[out[i]]!=data[out[i-1]]){
 			order.push_back(i);
 			std::cout << "Peak"<< out[i]<<","<< data[out[i]] <<"\n";
 			numPeaks++;
 		}
 	}
+
 	// sort the peaks
 	std::sort(order.begin(), order.end(), [&out,&data](int i1, int i2){ return data[out[i1]]> data[out[i2]];});
 	        // Try to swap any peaks obviously in the wrong order
@@ -331,28 +341,31 @@ void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
 void EglPreview::incandescentCal(uint32_t *shrunk, uint16_t width){
 	const double h = 6.626e-34;
 	const double k = 1.38066e-23;
-	const double T = 4000;
+	const double T = 3000;
 	const double c = 2.998e8;
 	const double kc = c*h / (k* T);
 	const double d = 2.0*h*c*c;
-	const double maxlimitCal = 2000;
 	float max = -1;
+	const double minS = 200;
 	for(unsigned int x=0; x<width;x++){
 		double wl = (-label_c + x)/label_b*1e-9;
-
+		double s = double(shrunk[x]) - darkCalibration[x];
 		std::cout << wl << "_" << "_ ";
 		incandescentCalibration[x] = d*pow(wl,-5)/(exp(kc/wl)-1.0);
-		std::cout << incandescentCalibration[x] << "->" << shrunk[x] << "  ";
-		incandescentCalibration[x] /= shrunk[x];
-		incandescentCalibration[x] = std::min(incandescentCalibration[x], maxlimitCal);
+		std::cout << incandescentCalibration[x] << "->" << s << "  ";
+		incandescentCalibration[x] /= s;
+		if(s < minS){
+			incandescentCalibration[x]=0;
+		}
 		if(incandescentCalibration[x] > x){
 			max=incandescentCalibration[x];
 		}
 		std::cout << incandescentCalibration[x] << "\n";
 	}
 	for(unsigned int x=0; x<width;x++){
+		std::cout << "IncCal x="<< x << " -> " << incandescentCalibration[x] << "   ";
 		incandescentCalibration[x] *= 500.0/max;
-		std::cout << "x="<< x << " -> " << incandescentCalibration[x] << "\n";
+		std::cout << " -> " << incandescentCalibration[x] << "\n";
 	}
 
 }
@@ -1131,6 +1144,7 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	}
 	if(doSave){
 		saveCal(info.width);
+		doSave=false;
 	}
 
 	// ************************

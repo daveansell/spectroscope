@@ -28,7 +28,7 @@
 #define IMAGE_WIDTH 1920
 #define PIN_SWITCH 21
 #define DEBOUNCE 50
-#define BETWEEN_PRESSES 300
+#define BETWEEN_PRESSES 500
 
 #include <chrono>
 int lastSwitchState=1;
@@ -129,8 +129,14 @@ void calibrateMercury(){
 void calibrateIncandescent(){
 	std::cout<< "calibrateIncandescent()\n";
 	doIncandescent=true;
-
 }
+
+void calibrateDark(){
+	std::cout<< "calibrateDark()\n";
+	doDark=true;
+}
+
+
 
 void calibrateSlope(){
 	doSlope=true;
@@ -251,24 +257,25 @@ static void event_loop(LibcameraEncoder &app)
 				std::cout<< "Else";
 			}
 		}else if(switchState==1 && (duration > std::chrono::milliseconds(BETWEEN_PRESSES) && numPresses>0)){
-			std::cout << "Pressed_"<< numPresses;
+			std::cout << "Finish Pressed_"<< numPresses;
 			//libcamera::ControlList newControls;
 			//const libcamera::CameraControlValidator * validator = app.validator();
 			
 			switch(numPresses){
-				case 5: // Do calibration on mercury lamp
-			//		if( validator->validate(controls::AfMode)){
-			//			newControls.set(controls::AfMode, controls::AfModeManual);
-			//			app.SetControls(newControls);
-			//	        	newControls.clear();	
-			//		}
-					calibrateMercury();
-					break;
-				case 4:
-					calibrateIncandescent();
-					break;
 				case 3:
 					calibrateSlope();
+					break;
+				case 4:
+					calibrateDark();
+					break;
+				case 5: // Do calibration on mercury lamp
+					calibrateMercury();
+					break;
+				case 6:
+					calibrateIncandescent();
+					break;
+				case 7:
+					doSave=true;
 					break;
 			}
 			numPresses =0;

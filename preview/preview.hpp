@@ -47,8 +47,10 @@ Preview *make_preview(Options const *options);
 // flags to do various calibration tasks
 extern bool doShadow;
 extern bool doSlope;
+extern bool doDark;
 extern bool doMercury;
 extern bool doIncandescent;
+extern bool doSave;
 using namespace std::chrono;
 extern std::chrono::time_point <std::chrono::system_clock>shadowTime;
 

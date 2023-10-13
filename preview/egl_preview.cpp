@@ -57,9 +57,14 @@
 
 bool doMercury = false;
 bool doIncandescent = false;
+bool doDark = false;
 bool doShadow = true;
 bool doSlope = false;
-char calFileName[] = "cal.txt";
+bool doSave = false;
+char slopeFileName[] = "calSlope.txt";
+char incandescentFileName[] = "calIncandescent.txt";
+char darkFileName[] = "calDark.txt";
+char wavelengthFileName[] = "calWavelength.txt";
 std::chrono::time_point <std::chrono::system_clock>shadowTime;
 int labelPositions[]={ 100,250,400,550,700,850,1000,1150};
 float labelValues[]={ 300,400,500,600,700,800,900,1000};
@@ -100,8 +105,9 @@ private:
       //  void findPeaks(uint16_t *data, uint16_t width, uint16_t *peaks);
         void parsePeaks(uint32_t *data, uint16_t width);
         void incandescentCal(uint32_t *shrunk, uint16_t width);
-	void readCal();
-	void saveCal();
+        void darkCal(uint32_t *shrunk, uint16_t width);
+	void readCal(unsigned int width);
+	void saveCal(unsigned int width);
 	::Display *display_;
 	EGLDisplay egl_display_;
 	Window window_;
@@ -125,6 +131,7 @@ private:
 	GLuint renderedTexture[3];
 	uint32_t *shrunk;
 	double *incandescentCalibration;
+	uint32_t *darkCalibration;
 	GLubyte *shadowData;
 	GLubyte * graphData;
 	GLubyte* pixels;
@@ -137,12 +144,83 @@ private:
 	Options const * theOptions;
 };
 
-void EglPreview::saveCal(){
+void EglPreview::readCal(unsigned int width){
+	std::string line;
+	unsigned int w;
+	std::ifstream calfile;
+	calfile.open(slopeFileName);
+	if(calfile){
+		std::getline(calfile, line);
+		slope = std::stod(line);
+		calfile.close();
+		std::cout << "Loaded Slope = " << slope << "\n";
+	}
+	
+	calfile.open(darkFileName);
+	if(calfile){
+		std::getline(calfile, line);
+		w=std::stoi(line);
+		for(unsigned int i=0;i<std::min(w,width); i++){
+			std::getline(calfile, line);
+			std::cout << i << " " << w << "-" << width  << "line=" << line <<"\n";
+			darkCalibration[i] = std::stod(line);
+		}
+		calfile.close();
+		std::cout << "Loaded Dark" << "\n";
+	}
+
+	calfile.open(incandescentFileName);
+	if(calfile){
+		std::getline(calfile, line);
+		w=std::stoi(line);
+		for(unsigned int i=0;i<std::min(w,width); i++){
+			std::getline(calfile, line);
+			incandescentCalibration[i] = std::stod(line);
+		}
+		calfile.close();
+		std::cout << "Loaded Incandescent" << "\n";
+	}
+
+	calfile.open(wavelengthFileName);
+	if(calfile){
+		std::getline(calfile, line);
+		label_b = std::stod(line);
+		std::getline(calfile, line);
+		label_c = std::stod(line);
+		calfile.close();
+		// put the labels in the right positions
+    		for(int i=0; i<numLabels; i++){
+			std::cout << "Label " << labelValues[i] << " " << ( label_c+label_b*labelValues[i] ) << "\n";
+			labelPositions[i]=label_c+label_b*labelValues[i];
+    		}
+		std::cout << "Loaded Dark" << "\n";
+	}
+}
+
+void EglPreview::saveCal(unsigned int width){
+	std::cout << "Save Calibration" << "\n";
 	std::ofstream calfile;
-	calfile.open(calFileName);
-
-	calfile << "Slope\n" << slope << "\n";
-
+	calfile.open(slopeFileName);
+	calfile << slope << "\n";
+	calfile.close();
+// save dark cal
+	calfile.open(darkFileName);
+	calfile << width << "\n";
+	for(unsigned int i=0;i<width; i++){
+		calfile << darkCalibration[i] << "\n";
+	}
+	calfile.close();
+// save amplitude cal
+	calfile.open(incandescentFileName);
+	calfile << width << "\n";
+	for(unsigned int i=0;i<width; i++){
+		calfile << incandescentCalibration[i] << "\n";
+	}
+	calfile.close();
+// save coefficients for wavelength fit
+	calfile.open(wavelengthFileName);
+	calfile << label_b << "\n";
+	calfile << label_c << "\n";
 	calfile.close();
 }
 /*
@@ -249,31 +327,24 @@ void EglPreview::parsePeaks(uint32_t *data, uint16_t width){
     	std::cout << "Fit b=" << label_b << "x + c=" << label_c << "\n";
 }
 
-void EglPreview::readCal(){
-	std::ifstream calfile;
-	calfile.open(calFileName);
-		std::string line;
-		std::getline(calfile, line);
-		std::getline(calfile, line);
-		slope = atof(line.c_str());
-	calfile.close();
-}
-
 
 void EglPreview::incandescentCal(uint32_t *shrunk, uint16_t width){
-	const float h = 6.6e-34;
-	const float k = 1.38e-23;
-	const float T = 3000;
-	const float c = h / k/ T * 1.0e-9;
+	const double h = 6.626e-34;
+	const double k = 1.38066e-23;
+	const double T = 4000;
+	const double c = 2.998e8;
+	const double kc = c*h / (k* T);
+	const double d = 2.0*h*c*c;
+	const double maxlimitCal = 2000;
 	float max = -1;
 	for(unsigned int x=0; x<width;x++){
-		float wl = (-label_c + x)/label_b;
-		double f = 3.0e8 / wl /1.0e-9;
+		double wl = (-label_c + x)/label_b*1e-9;
 
-		std::cout << f << "_" << (c*f) << "_ ";
-		incandescentCalibration[x] = f*f*f/(exp(c*f)-1.0);
+		std::cout << wl << "_" << "_ ";
+		incandescentCalibration[x] = d*pow(wl,-5)/(exp(kc/wl)-1.0);
 		std::cout << incandescentCalibration[x] << "->" << shrunk[x] << "  ";
 		incandescentCalibration[x] /= shrunk[x];
+		incandescentCalibration[x] = std::min(incandescentCalibration[x], maxlimitCal);
 		if(incandescentCalibration[x] > x){
 			max=incandescentCalibration[x];
 		}
@@ -286,6 +357,11 @@ void EglPreview::incandescentCal(uint32_t *shrunk, uint16_t width){
 
 }
 
+void EglPreview::darkCal(uint32_t *shrunk, uint16_t width){
+	for(unsigned int x=0; x<width;x++){
+		darkCalibration[x] = shrunk[x];
+	}
+}
 
 static GLint compile_shader(GLenum target, const char *source)
 {
@@ -386,8 +462,8 @@ static GLint gl_setupGraph(int width, int height, int window_width, int window_h
 					 "	float y = texcoord.y * 0.5 + 0.5;\n"
 					 "	if(y<p.x){\n"
  					 "//	if( y < v && y<vl && y<vr){\n"
-					 "	  	gl_FragColor = vec4(1.0,0,0.0,1);\n"
-					 "	}else{gl_FragColor = vec4(0.0,0.0,0.1,1.0);}\n"
+					 "	  	gl_FragColor = vec4(y/v,0,0.0,1);\n"
+					 "	}else{gl_FragColor = vec4(0.0,0.0,0.0,1.0);}\n"
 					 "//	else{\n"
 					 "//	 	if(y>v && y>vl && y>vr){\n"
 					 "//			gl_FragColor = vec4(0,0,0.0,1);\n"
@@ -774,8 +850,10 @@ void EglPreview::makeBuffer(int fd, size_t size, StreamInfo const &info, Buffer 
 		prog=gl_setup(info.width, info.height, width_, height_);
 		shrunk = new uint32_t[info.width+2];
 		incandescentCalibration = new double[info.width+2];
+		darkCalibration = new uint32_t[info.width+2];
 		for(unsigned int i=0; i<info.width;i++){
 			incandescentCalibration[i]=1.0;
+			darkCalibration[i]=0;
 		}
 		shadowData = new GLubyte[info.width*4*8+1];
        		pixels = new GLubyte[info.width * info.height * 4+20];
@@ -850,6 +928,14 @@ void Shrink(GLubyte * data, uint16_t x0, uint16_t x1, uint16_t width, uint16_t y
 			int x2 = (int)x2f;
 			float rem = x2f-x2;
 			if (x2<0) x2=0;
+		/*	GLubyte vy = data[(y*stride+x2)];
+		        GLubyte vu = data[(int)((y/2+height)*stride+(x2)/2)]-128;
+			GLubyte vv = data[(int)((0.5+y/2+height)*stride+(x2)/2)]-128;
+
+			float r = RY*vy + RU * vu + RV * vv;
+			float g = GY*vy + GU * vu + GV * vv;
+			float b = BY*vy + BU * vu + BV * vv;
+			float val = std::max(std::max(r,g),b);*/
 			float val= (data[(y*stride+x2)])*Y_FAC//3.0
 				+ (data[(int)((y/2+height)*stride+(x2)/2)]-128)*U_FAC//0.781
 			       	+ (data[(int)((0.5+y/2+height)*stride+(x2)/2)]-128)*V_FAC;//1.63 ;
@@ -946,10 +1032,9 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		setupRenderFrameBuffer(progGraph, info.width, &renderFramebufferName[0], &renderedTexture[0]);
 		graphData = new GLubyte[info.width*4*8+1];
 		first_time_=false;
+		readCal(info.width);
 		}
-		//std::cout << "info.width=" << info.width << " info.height=" << info.height << " info.stride="<< info.stride << " width_=" << width_ << "height_=" << height_ << "w_factor" << w_factor << "h_factor" << h_factor << "\n";
 	}
-	//std::cout << "width=" << width_ << " height=" << height_ << "\n";
 	glClearColor(0, 0, 0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 	// ***********************
@@ -1004,6 +1089,10 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	if(doIncandescent){
 		incandescentCal(shrunk,info.width);
 		doIncandescent=false;
+	}else if(doDark){
+		darkCal(shrunk,info.width);
+		doDark=false;
+
 	}
 	if(doMercury){
 		parsePeaks(shrunk, info.width);
@@ -1011,6 +1100,11 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 	}
 	max1 = 0;
 	for(unsigned int i=0; i<info.width;i++){
+		if(shrunk[i]>darkCalibration[i]){
+			shrunk[i] -= darkCalibration[i];
+		}else{
+			shrunk[i]=0;
+		}
 		shrunk[i] = (int32_t)(incandescentCalibration[i] * (float)shrunk[i]); 
 		if(shrunk[i]>max1){
 			max1=shrunk[i];
@@ -1034,6 +1128,9 @@ void EglPreview::Show(int fd, libcamera::Span<uint8_t> span, StreamInfo const &i
 		}
 		std::cout << "\n";
 		doShadow=false;
+	}
+	if(doSave){
+		saveCal(info.width);
 	}
 
 	// ************************

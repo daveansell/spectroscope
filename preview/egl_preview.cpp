@@ -354,7 +354,10 @@ void EglPreview::incandescentCal(uint32_t *shrunk, uint16_t width){
 		incandescentCalibration[x] = d*pow(wl,-5)/(exp(kc/wl)-1.0);
 		std::cout << incandescentCalibration[x] << "->" << s << "  ";
 		incandescentCalibration[x] /= s;
-		if(s < minS){
+		if(s < 3e-7 ){
+			incandescentCalibration[x]=0;
+		}
+		if(s < minS ){
 			incandescentCalibration[x]=0;
 		}
 		if(incandescentCalibration[x] > x){

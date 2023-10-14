@@ -1,4 +1,6 @@
 sudo apt-get install meson vim git
 sudo apt-get install libglfw3-dev freeglut3-dev  libglut-dev libglu-dev libglew-dev 
-sudo apt-get install libstb-dev libgsl-dev libyaml-dev
+sudo apt-get install libstb-dev libgsl-dev libyaml-dev xdotool
+
+
 

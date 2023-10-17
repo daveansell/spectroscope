@@ -1,6 +1,6 @@
-# libcamera-apps
+# spectroscope - derived from libcamera-apps
 
-This is a small suite of libcamera-based apps that aim to copy the functionality of the existing "raspicam" apps. 
+Software to be run on a raspberry pi to produce a spectrometer using a picam and a spectroscope.
 
 Build
 -----
